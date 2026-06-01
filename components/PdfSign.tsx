@@ -134,7 +134,7 @@ export default function PdfSign() {
   }, [pdfBytes, placedSigs, pdfName, password]);
 
   if (!pdfBytes || pages.length === 0) return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
+    <div className="min-h-screen bg-[#080810] flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-lg">
         <h1 className="text-2xl font-bold text-gray-900 mb-1 text-center">Fill & Sign</h1>
         <p className="text-gray-500 text-sm mb-6 text-center">Draw your signature and place it anywhere on the PDF.</p>

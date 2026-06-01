@@ -59,7 +59,7 @@ export default function PdfMerge() {
   }, [files]);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 flex flex-col items-center">
+    <div className="min-h-screen bg-[#080810] p-6 flex flex-col items-center">
       <div className="w-full max-w-xl">
         <h1 className="text-2xl font-bold text-gray-900 mb-1">Merge PDFs</h1>
         <p className="text-gray-500 text-sm mb-6">Add PDFs below, drag to reorder, then download the merged result.</p>

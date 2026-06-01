@@ -79,7 +79,7 @@ export default function PdfSplit() {
   }, [pdfBytes, selectedIndices, mode, thumbs, pdfName]);
 
   if (!pdfBytes) return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
+    <div className="min-h-screen bg-[#080810] flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-lg">
         <h1 className="text-2xl font-bold text-gray-900 mb-1 text-center">Split PDF</h1>
         <p className="text-gray-500 text-sm mb-6 text-center">Select pages to extract or remove.</p>
@@ -100,7 +100,7 @@ export default function PdfSplit() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-[#080810] p-6">
       <div className="max-w-4xl mx-auto">
         <div className="flex flex-wrap items-center gap-3 mb-6">
           <h1 className="text-xl font-bold text-gray-900 flex-1">{pdfName}</h1>

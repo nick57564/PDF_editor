@@ -29,11 +29,10 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
-        {/* Plausible analytics — update domain when deployed */}
+      <body className="min-h-full flex flex-col bg-[#080810] text-white">
         <Script defer data-domain={process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN || "your-domain.vercel.app"} src="https://plausible.io/js/script.js" />
         <Nav />
-        <main className="flex-1 flex flex-col">{children}</main>
+        <main className="flex-1 flex flex-col pt-14">{children}</main>
       </body>
     </html>
   );
