@@ -36,30 +36,42 @@ export function sampleBgColor(
 
     const data = ctx.getImageData(x, y, w, h).data;
 
-    // Bucket colors into 32-step bins (5-bit per channel) to find the mode
-    const buckets = new Map<string, { count: number; r: number; g: number; b: number }>();
+    // Bucket colors into 32-step bins to find the dominant color group,
+    // but track the ACTUAL pixel sums so we return the real average, not the quantized value.
+    const buckets = new Map<string, { count: number; rSum: number; gSum: number; bSum: number }>();
     for (let i = 0; i < data.length; i += 4) {
       if (data[i + 3] < 128) continue;
-      // Quantize to reduce noise
-      const r = data[i] & 0xe0;
-      const g = data[i + 1] & 0xe0;
-      const b = data[i + 2] & 0xe0;
-      const key = `${r},${g},${b}`;
+      const key = `${data[i] >> 5},${data[i + 1] >> 5},${data[i + 2] >> 5}`; // 3-bit quantize
       const existing = buckets.get(key);
-      if (existing) { existing.count++; }
-      else { buckets.set(key, { count: 1, r, g, b }); }
+      if (existing) {
+        existing.count++;
+        existing.rSum += data[i];
+        existing.gSum += data[i + 1];
+        existing.bSum += data[i + 2];
+      } else {
+        buckets.set(key, { count: 1, rSum: data[i], gSum: data[i + 1], bSum: data[i + 2] });
+      }
     }
 
     if (buckets.size === 0) return { hex: "#ffffff", r: 1, g: 1, b: 1 };
 
-    // Most common bucket = background color
-    let best = { count: 0, r: 255, g: 255, b: 255 };
+    // Most common bucket = background color — use ACTUAL average, not quantized value
+    let best = { count: 0, rSum: 255, gSum: 255, bSum: 255 };
     for (const v of buckets.values()) {
       if (v.count > best.count) best = v;
     }
 
-    const hex = "#" + [best.r, best.g, best.b].map((v) => v.toString(16).padStart(2, "0")).join("");
-    return { hex, r: best.r / 255, g: best.g / 255, b: best.b / 255 };
+    let r = Math.round(best.rSum / best.count);
+    let g = Math.round(best.gSum / best.count);
+    let b = Math.round(best.bSum / best.count);
+
+    // Snap near-white to pure white (PDF rendering can produce #fafafa, #f8f8f8 etc.)
+    if (r > 240 && g > 240 && b > 240) { r = 255; g = 255; b = 255; }
+    // Snap near-black to pure black
+    if (r < 15 && g < 15 && b < 15) { r = 0; g = 0; b = 0; }
+
+    const hex = "#" + [r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("");
+    return { hex, r: r / 255, g: g / 255, b: b / 255 };
   } catch {
     return { hex: "#ffffff", r: 1, g: 1, b: 1 };
   }

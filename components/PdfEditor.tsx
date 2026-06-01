@@ -138,11 +138,18 @@ export default function PdfEditor() {
 
       // Helper: cover original text + draw replacement on canvas
       const applyEdit = (item: TextItem, newText: string, colorHex: string) => {
-        // Cover original with background color
-        ctx.fillStyle = item.bgHex;
-        ctx.fillRect(item.vpX - 1, item.vpY - 1, item.vpWidth + 3, item.vpHeight + 3);
-        // Draw replacement text
         const fs = Math.max(item.vpHeight * 0.88, 6);
+        const padX = fs * 0.15;
+        const padY = fs * 0.25;
+        // Cover original with background color (generous padding)
+        ctx.fillStyle = item.bgHex;
+        ctx.fillRect(
+          item.vpX - padX,
+          item.vpY - padY,
+          item.vpWidth + padX * 2 + fs * 0.5,
+          item.vpHeight + padY * 2
+        );
+        // Draw replacement text
         ctx.font = `${item.fontWeight} ${fs}px ${item.cssFontFamily}`;
         ctx.fillStyle = colorHex;
         ctx.fillText(newText, item.vpX, item.vpY + fs);

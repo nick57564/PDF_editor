@@ -71,18 +71,21 @@ export async function POST(req: NextRequest) {
     // Use detected background color (e.g. dark navy, not white)
     const bgColor = rgb(edit.bgR ?? 1, edit.bgG ?? 1, edit.bgB ?? 1);
 
+    // Draw cover rectangle with generous padding so no original text peeks through
+    const padX = safeSize * 0.15;
+    const padY = safeSize * 0.25;
     page.drawRectangle({
-      x: x - 1,
-      y: y - 1,
-      width: width + 3,
-      height: height + 3,
+      x: x - padX,
+      y: y - padY,
+      width: width + padX * 2 + safeSize * 0.5, // extra width for safety
+      height: height + padY * 2,
       color: bgColor,
       opacity: 1,
     });
 
     page.drawText(newText, {
       x,
-      y: y + 1,
+      y: y + padY * 0.3,
       size: safeSize,
       font: helvetica,
       color: textColor,
