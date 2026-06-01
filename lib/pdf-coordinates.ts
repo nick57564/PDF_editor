@@ -133,18 +133,32 @@ export function sampleTextColor(
   }
 }
 
-/** Map a PDF font name to a CSS font-family string and weight. */
-export function cssFontFromPdfName(fontName: string): { family: string; weight: string } {
+/** Map a PDF font name to CSS properties and bold/italic flags. */
+export function cssFontFromPdfName(fontName: string): {
+  family: string;
+  weight: string;
+  style: string;
+  isBold: boolean;
+  isItalic: boolean;
+} {
   const n = (fontName || "").toLowerCase();
-  const bold = n.includes("bold") || n.includes("heavy") || n.includes("black");
-  const italic = n.includes("italic") || n.includes("oblique");
+  const isBold = n.includes("bold") || n.includes("heavy") || n.includes("black") || n.includes("demi");
+  const isItalic = n.includes("italic") || n.includes("oblique") || n.includes("slant");
+
   let family = "Helvetica, Arial, sans-serif";
-  if (n.includes("times") || n.includes("roman") || n.includes("serif")) {
+  if (n.includes("times") || n.includes("roman") || n.includes("minion") || n.includes("garamond")) {
     family = "Times New Roman, Times, serif";
-  } else if (n.includes("courier") || n.includes("mono")) {
+  } else if (n.includes("courier") || n.includes("mono") || n.includes("typewriter")) {
     family = "Courier New, Courier, monospace";
   } else if (n.includes("georgia")) {
     family = "Georgia, serif";
   }
-  return { family, weight: bold ? "bold" : "normal" };
+
+  return {
+    family,
+    weight: isBold ? "bold" : "normal",
+    style: isItalic ? "italic" : "normal",
+    isBold,
+    isItalic,
+  };
 }

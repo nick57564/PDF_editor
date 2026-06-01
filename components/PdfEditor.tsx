@@ -58,6 +58,9 @@ interface TextItem {
   bgB: number;
   cssFontFamily: string;
   fontWeight: string;
+  fontStyle: string;
+  isBold: boolean;
+  isItalic: boolean;
 }
 
 interface QueuedEdit {
@@ -77,6 +80,8 @@ interface QueuedEdit {
   bgR: number;
   bgG: number;
   bgB: number;
+  isBold: boolean;
+  isItalic: boolean;
 }
 
 interface RenderedPage {
@@ -149,8 +154,8 @@ export default function PdfEditor() {
           item.vpWidth + padX * 2 + fs * 0.5,
           item.vpHeight + padY * 2
         );
-        // Draw replacement text
-        ctx.font = `${item.fontWeight} ${fs}px ${item.cssFontFamily}`;
+        // Draw replacement text matching original bold/italic
+        ctx.font = `${item.fontStyle} ${item.fontWeight} ${fs}px ${item.cssFontFamily}`;
         ctx.fillStyle = colorHex;
         ctx.fillText(newText, item.vpX, item.vpY + fs);
       };
@@ -258,7 +263,7 @@ export default function PdfEditor() {
 
         const bg = sampleBgColor(canvas, vpX, vpY, vpWidth, vpHeight);
         const detectedColor = sampleTextColor(canvas, vpX, vpY, vpWidth, vpHeight, bg.hex);
-        const { family: cssFontFamily, weight: fontWeight } = cssFontFromPdfName(item.fontName || "");
+        const { family: cssFontFamily, weight: fontWeight, style: fontStyle, isBold, isItalic } = cssFontFromPdfName(item.fontName || "");
 
         allTextItems.push({
           id: `${i}-${allTextItems.length}`,
@@ -283,6 +288,9 @@ export default function PdfEditor() {
           bgB: bg.b,
           cssFontFamily,
           fontWeight,
+          fontStyle,
+          isBold,
+          isItalic,
         });
       }
 
@@ -363,6 +371,8 @@ export default function PdfEditor() {
           bgR: item.bgR,
           bgG: item.bgG,
           bgB: item.bgB,
+          isBold: item.isBold,
+          isItalic: item.isItalic,
         };
         if (existing >= 0) {
           const next = [...prev];
@@ -418,6 +428,8 @@ export default function PdfEditor() {
             bgR: e.bgR,
             bgG: e.bgG,
             bgB: e.bgB,
+            isBold: e.isBold,
+            isItalic: e.isItalic,
           })),
         }),
       });
@@ -613,6 +625,7 @@ export default function PdfEditor() {
                               fontSize: Math.max(item.vpHeight * 0.88, 12),
                               fontFamily: item.cssFontFamily,
                               fontWeight: item.fontWeight,
+                              fontStyle: item.fontStyle,
                               color: "#ffffff",        // always white in the dark input box — readable
                               border: "none",
                               outline: "none",

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
 
 export interface EditPayload {
   pdfBase64: string;
@@ -20,6 +20,8 @@ export interface PdfEdit {
   bgR?: number;
   bgG?: number;
   bgB?: number;
+  isBold?: boolean;
+  isItalic?: boolean;
 }
 
 export const maxDuration = 10;
@@ -55,7 +57,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "corrupt" }, { status: 422 });
   }
 
-  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  // Pre-embed all four Helvetica variants (bold/italic combos) — only used variants get embedded
+  const fontCache = new Map<string, PDFFont>();
+  async function getFont(bold: boolean, italic: boolean): Promise<PDFFont> {
+    const key = `${bold}-${italic}`;
+    if (fontCache.has(key)) return fontCache.get(key)!;
+    let name: StandardFonts;
+    if (bold && italic)       name = StandardFonts.HelveticaBoldOblique;
+    else if (bold)            name = StandardFonts.HelveticaBold;
+    else if (italic)          name = StandardFonts.HelveticaOblique;
+    else                      name = StandardFonts.Helvetica;
+    const font = await pdfDoc.embedFont(name);
+    fontCache.set(key, font);
+    return font;
+  }
+
   const pages = pdfDoc.getPages();
 
   for (const edit of edits) {
@@ -64,6 +80,9 @@ export async function POST(req: NextRequest) {
 
     const { x, y, width, height, newText, fontSize } = edit;
     const safeSize = Math.max(fontSize, 6);
+
+    // Pick font variant matching original bold/italic
+    const font = await getFont(edit.isBold ?? false, edit.isItalic ?? false);
 
     // Use detected text color, default to black
     const textColor = rgb(edit.colorR ?? 0, edit.colorG ?? 0, edit.colorB ?? 0);
@@ -87,7 +106,7 @@ export async function POST(req: NextRequest) {
       x,
       y: y + padY * 0.3,
       size: safeSize,
-      font: helvetica,
+      font,
       color: textColor,
     });
   }
