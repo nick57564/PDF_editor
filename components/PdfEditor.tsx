@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { convertToPdfLibCoords, isCJK, isLargeFile, sampleTextColor } from "@/lib/pdf-coordinates";
+import { isCJK, isLargeFile, sampleTextColor } from "@/lib/pdf-coordinates";
 
 // PDF.js loaded dynamically to avoid SSR issues
 let pdfjsLib: typeof import("pdfjs-dist") | null = null;
@@ -169,17 +169,33 @@ export default function PdfEditor() {
         totalTextItems++;
 
         const transform = item.transform as number[];
-        const scaleY = Math.abs(transform[3]);
-        const vpHeight = scaleY;
-        const vpX = transform[4];
-        const vpY = viewport.height - transform[5] - vpHeight;
-        const vpWidth = item.width;
 
-        const pdfCoords = convertToPdfLibCoords(
-          { str: item.str, transform, width: item.width },
-          SCALE,
-          pageHeightPts
+        // Convert PDF user-space coords → canvas pixel coords using the viewport transform.
+        // transform[4], transform[5] are in PDF points (user space).
+        // viewport.convertToViewportPoint returns canvas pixels (top-left origin, y-down).
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const [vpTx, vpTy] = (viewport as any).convertToViewportPoint(
+          transform[4],
+          transform[5]
         );
+        // Font size in canvas pixels
+        const vpFontSize = Math.abs(transform[3]) * SCALE;
+        // Text width in canvas pixels (item.width is in PDF user space)
+        const vpWidth = Math.max((item.width || 0) * SCALE, 12);
+        const vpHeight = Math.max(vpFontSize, 10);
+        // vpTy is the baseline — shift up by font size to get the top of the glyph
+        const vpX = vpTx;
+        const vpY = vpTy - vpFontSize;
+
+        // PDF-lib coords: transform values are already in PDF user space (points)
+        const pdfFontSize = Math.abs(transform[3]);
+        const pdfCoords = {
+          x: transform[4],
+          y: transform[5] - pdfFontSize * 0.2, // slightly below baseline for white rect
+          width: Math.max(item.width || 0, 1),
+          height: pdfFontSize * 1.2,
+          fontSize: pdfFontSize,
+        };
 
         const detectedColor = sampleTextColor(canvas, vpX, vpY, vpWidth, vpHeight);
 
@@ -488,16 +504,20 @@ export default function PdfEditor() {
                   return (
                     <div
                       key={item.id}
-                      onClick={() => !isEditing && startEdit(item)}
+                      onClick={() => !editingId && startEdit(item)}
+                      title={`Click to edit: "${item.str}"`}
                       style={{
                         position: "absolute",
                         left: item.vpX,
                         top: item.vpY,
-                        width: Math.max(item.vpWidth, 10),
-                        height: Math.max(item.vpHeight, 10),
+                        width: Math.max(item.vpWidth, 16),
+                        height: Math.max(item.vpHeight, 12),
                         cursor: "text",
-                        zIndex: 2,
+                        zIndex: 3,
+                        borderRadius: 2,
                       }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "rgba(59,130,246,0.15)"; (e.currentTarget as HTMLDivElement).style.outline = "1px solid rgba(59,130,246,0.4)"; }}
+                      onMouseLeave={(e) => { const el = e.currentTarget as HTMLDivElement; el.style.background = queued ? "rgba(251,191,36,0.35)" : "transparent"; el.style.outline = queued ? "1px solid rgba(251,191,36,0.6)" : "none"; }}
                     >
                       {isEditing ? (
                         <div style={{ position: "absolute", top: 0, left: 0, zIndex: 10, display: "flex", alignItems: "center", background: "white", border: "1px solid #3b82f6", borderRadius: 4, boxShadow: "0 2px 8px rgba(0,0,0,0.15)", padding: "2px 4px", minWidth: Math.max(item.vpWidth, 120) }}>
