@@ -4,7 +4,7 @@ import { PDFDocument } from "pdf-lib";
 
 async function getPdfJs() {
   const lib = await import("pdfjs-dist");
-  lib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${lib.version}/pdf.worker.min.mjs`;
+  lib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
   return lib;
 }
 

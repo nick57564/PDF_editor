@@ -14,13 +14,15 @@ export interface PdfEdit {
   height: number;
   newText: string;
   fontSize: number;
+  colorR?: number;
+  colorG?: number;
+  colorB?: number;
 }
 
-export const maxDuration = 10; // Vercel free tier limit
+export const maxDuration = 10;
 
 export async function POST(req: NextRequest) {
   let body: EditPayload;
-
   try {
     body = await req.json();
   } catch {
@@ -28,7 +30,6 @@ export async function POST(req: NextRequest) {
   }
 
   const { pdfBase64, edits } = body;
-
   if (!pdfBase64 || !Array.isArray(edits) || edits.length === 0) {
     return NextResponse.json({ error: "Missing pdfBase64 or edits" }, { status: 400 });
   }
@@ -46,15 +47,9 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.toLowerCase().includes("encrypt")) {
-      return NextResponse.json(
-        { error: "encrypted", message: "This PDF is password-protected. Password support coming soon." },
-        { status: 422 }
-      );
+      return NextResponse.json({ error: "encrypted" }, { status: 422 });
     }
-    return NextResponse.json(
-      { error: "corrupt", message: "This file appears damaged or is not a valid PDF." },
-      { status: 422 }
-    );
+    return NextResponse.json({ error: "corrupt" }, { status: 422 });
   }
 
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -67,28 +62,34 @@ export async function POST(req: NextRequest) {
     const { x, y, width, height, newText, fontSize } = edit;
     const safeSize = Math.max(fontSize, 6);
 
-    // 1. White rectangle to cover the original text
+    // Use detected text color, default to black
+    const textColor = rgb(
+      edit.colorR ?? 0,
+      edit.colorG ?? 0,
+      edit.colorB ?? 0
+    );
+
+    // Sample background color by slightly expanding the rectangle area
+    // We use white as a safe default — works for white-background PDFs
     page.drawRectangle({
-      x,
-      y,
+      x: x - 0.5,
+      y: y - 0.5,
       width: width + 2,
-      height: height + 1,
+      height: height + 2,
       color: rgb(1, 1, 1),
       opacity: 1,
     });
 
-    // 2. New text drawn on top
     page.drawText(newText, {
       x,
       y: y + 1,
       size: safeSize,
       font: helvetica,
-      color: rgb(0, 0, 0),
+      color: textColor,
     });
   }
 
   const modifiedBytes = await pdfDoc.save();
   const resultBase64 = Buffer.from(modifiedBytes).toString("base64");
-
   return NextResponse.json({ pdfBase64: resultBase64 });
 }

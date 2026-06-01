@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { convertToPdfLibCoords, isCJK, isLargeFile } from "@/lib/pdf-coordinates";
+import { convertToPdfLibCoords, isCJK, isLargeFile, sampleTextColor } from "@/lib/pdf-coordinates";
 
 // PDF.js loaded dynamically to avoid SSR issues
 let pdfjsLib: typeof import("pdfjs-dist") | null = null;
@@ -9,7 +9,7 @@ let pdfjsLib: typeof import("pdfjs-dist") | null = null;
 async function getPdfJs() {
   if (!pdfjsLib) {
     pdfjsLib = await import("pdfjs-dist");
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
   }
   return pdfjsLib;
 }
@@ -48,6 +48,10 @@ interface TextItem {
   pdfHeight: number;
   fontSize: number;
   hasCJK: boolean;
+  colorR: number;
+  colorG: number;
+  colorB: number;
+  colorHex: string;
 }
 
 interface QueuedEdit {
@@ -60,6 +64,10 @@ interface QueuedEdit {
   pdfWidth: number;
   pdfHeight: number;
   fontSize: number;
+  colorR: number;
+  colorG: number;
+  colorB: number;
+  colorHex: string;
 }
 
 interface RenderedPage {
@@ -81,6 +89,7 @@ export default function PdfEditor() {
   const [editQueue, setEditQueue] = useState<QueuedEdit[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [editColor, setEditColor] = useState("#000000");
   const [appError, setAppError] = useState<AppError>(null);
   const [cjkWarning, setCjkWarning] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -172,6 +181,8 @@ export default function PdfEditor() {
           pageHeightPts
         );
 
+        const detectedColor = sampleTextColor(canvas, vpX, vpY, vpWidth, vpHeight);
+
         allTextItems.push({
           id: `${i}-${allTextItems.length}`,
           str: item.str,
@@ -185,6 +196,10 @@ export default function PdfEditor() {
           pdfHeight: pdfCoords.height,
           fontSize: pdfCoords.fontSize,
           hasCJK: isCJK(item.str),
+          colorR: detectedColor.r,
+          colorG: detectedColor.g,
+          colorB: detectedColor.b,
+          colorHex: detectedColor.hex,
         });
       }
 
@@ -231,6 +246,7 @@ export default function PdfEditor() {
     if (item.hasCJK) setCjkWarning(true);
     setEditingId(item.id);
     setEditValue(item.str);
+    setEditColor(item.colorHex);
   }, []);
 
   const confirmEdit = useCallback(
@@ -243,6 +259,10 @@ export default function PdfEditor() {
       setEditQueue((prev) => {
         // Replace if already queued
         const existing = prev.findIndex((e) => e.itemId === item.id);
+        const hex = editColor || item.colorHex;
+        const r = parseInt(hex.slice(1,3),16)/255;
+        const g = parseInt(hex.slice(3,5),16)/255;
+        const b = parseInt(hex.slice(5,7),16)/255;
         const entry: QueuedEdit = {
           itemId: item.id,
           originalText: item.str,
@@ -253,6 +273,10 @@ export default function PdfEditor() {
           pdfWidth: item.pdfWidth,
           pdfHeight: item.pdfHeight,
           fontSize: item.fontSize,
+          colorR: r,
+          colorG: g,
+          colorB: b,
+          colorHex: hex,
         };
         if (existing >= 0) {
           const next = [...prev];
@@ -302,6 +326,9 @@ export default function PdfEditor() {
             height: e.pdfHeight,
             newText: e.newText,
             fontSize: e.fontSize,
+            colorR: e.colorR,
+            colorG: e.colorG,
+            colorB: e.colorB,
           })),
         }),
       });
@@ -473,27 +500,40 @@ export default function PdfEditor() {
                       }}
                     >
                       {isEditing ? (
-                        <input
-                          ref={editInputRef}
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") confirmEdit(item);
-                            if (e.key === "Escape") setEditingId(null);
-                          }}
-                          onBlur={() => confirmEdit(item)}
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            fontSize: item.vpHeight * 0.85,
-                            fontFamily: "Helvetica, Arial, sans-serif",
-                            padding: 0,
-                            border: "1px solid #3b82f6",
-                            outline: "none",
-                            background: "rgba(255,255,255,0.95)",
-                            boxSizing: "border-box",
-                          }}
-                        />
+                        <div style={{ position: "absolute", top: 0, left: 0, zIndex: 10, display: "flex", alignItems: "center", background: "white", border: "1px solid #3b82f6", borderRadius: 4, boxShadow: "0 2px 8px rgba(0,0,0,0.15)", padding: "2px 4px", minWidth: Math.max(item.vpWidth, 120) }}>
+                          <input
+                            ref={editInputRef}
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") confirmEdit(item);
+                              if (e.key === "Escape") setEditingId(null);
+                            }}
+                            style={{
+                              flex: 1,
+                              fontSize: Math.max(item.vpHeight * 0.85, 11),
+                              fontFamily: "Helvetica, Arial, sans-serif",
+                              color: editColor,
+                              border: "none",
+                              outline: "none",
+                              background: "transparent",
+                              minWidth: 60,
+                            }}
+                          />
+                          {/* Color picker — pre-filled with detected color */}
+                          <input
+                            type="color"
+                            value={editColor}
+                            onChange={(e) => setEditColor(e.target.value)}
+                            title="Text color"
+                            style={{ width: 20, height: 20, border: "none", padding: 0, cursor: "pointer", flexShrink: 0 }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                          />
+                          <button
+                            onMouseDown={(e) => { e.preventDefault(); confirmEdit(item); }}
+                            style={{ fontSize: 11, padding: "0 4px", color: "#3b82f6", fontWeight: "bold", background: "none", border: "none", cursor: "pointer", flexShrink: 0 }}
+                          >✓</button>
+                        </div>
                       ) : (
                         <div
                           title={queued ? `Edited: "${queued.newText}"` : "Click to edit"}
