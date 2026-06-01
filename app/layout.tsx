@@ -1,38 +1,34 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter, Playfair_Display } from "next/font/google";
 import Script from "next/script";
 import Nav from "@/components/Nav";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
+  weight: ["300", "400", "500", "600"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const playfair = Playfair_Display({
+  variable: "--font-playfair",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800", "900"],
+  style: ["normal", "italic"],
 });
 
 export const metadata: Metadata = {
   title: "PDF Editor — Free, no account required",
-  description: "Edit, annotate and download PDFs for free. No account, no uploads stored.",
+  description: "Edit, merge, sign and annotate PDFs for free. No account. Files stay on your device.",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col bg-[#080810] text-white">
+    <html lang="en" className={`${inter.variable} ${playfair.variable}`}>
+      <body style={{ background: "#f5f4f0", color: "#0c0c0c", minHeight: "100vh" }}>
         <Script defer data-domain={process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN || "your-domain.vercel.app"} src="https://plausible.io/js/script.js" />
         <Nav />
-        <main className="flex-1 flex flex-col pt-14">{children}</main>
+        <main>{children}</main>
       </body>
     </html>
   );

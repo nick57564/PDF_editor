@@ -183,7 +183,7 @@ export default function PdfAnnotate() {
   }, [pdfBytes, annotations, pdfName, pages]);
 
   if (!pdfBytes || pages.length === 0) return (
-    <div className="min-h-screen bg-[#080810] flex flex-col items-center justify-center p-6">
+    <div className="min-h-screen bg-[#f5f4f0] flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-lg">
         <h1 className="text-2xl font-bold text-gray-900 mb-1 text-center">Annotate PDF</h1>
         <p className="text-gray-500 text-sm mb-6 text-center">Highlight, draw, and add text notes.</p>

@@ -1,60 +1,93 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 
 const tools = [
-  { href: "/editor",   label: "Edit Text", icon: "✏️" },
-  { href: "/merge",    label: "Merge",     icon: "🔗" },
-  { href: "/split",    label: "Split",     icon: "✂️" },
-  { href: "/sign",     label: "Sign",      icon: "✍️" },
-  { href: "/annotate", label: "Annotate",  icon: "🖊️" },
+  { href: "/editor",   label: "Edit Text" },
+  { href: "/merge",    label: "Merge" },
+  { href: "/split",    label: "Split" },
+  { href: "/sign",     label: "Sign" },
+  { href: "/annotate", label: "Annotate" },
 ];
 
 export default function Nav() {
   const path = usePathname();
-  const isHome = path === "/";
+  const [open, setOpen] = useState(false);
 
   return (
-    <nav className="nav-bar">
-      <div className="max-w-6xl mx-auto px-6 h-14 flex items-center gap-6">
-        {/* Logo */}
-        <Link href="/" className="flex items-center gap-2 flex-shrink-0 group">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#4f6ef7] to-[#a78bfa] flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-blue-500/30">
-            P
-          </div>
-          <span className="text-sm font-semibold text-white/90 tracking-tight">PDFEditor</span>
+    <>
+      <nav className="site-nav">
+        <Link href="/" style={{
+          fontFamily: "var(--font-playfair)",
+          fontSize: "1.1rem", fontWeight: 700,
+          color: path === "/" ? "#f5f4f0" : "#0c0c0c",
+          textDecoration: "none", letterSpacing: "-0.02em",
+        }}>
+          PDF<em style={{ fontStyle: "italic" }}>editor</em>
         </Link>
 
-        {/* Divider */}
-        <div className="w-px h-4 bg-white/10 flex-shrink-0" />
+        <button
+          onClick={() => setOpen(!open)}
+          style={{
+            background: "none", border: "none", cursor: "pointer",
+            fontSize: "0.8rem", fontWeight: 600, letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            color: path === "/" ? "#f5f4f0" : "#0c0c0c",
+            display: "flex", alignItems: "center", gap: "0.5rem",
+          }}
+        >
+          {open ? "Close" : "Menu"}
+          <span style={{ fontSize: "1.2rem", lineHeight: 1 }}>{open ? "×" : "≡"}</span>
+        </button>
+      </nav>
 
-        {/* Tool links */}
-        <div className="flex items-center gap-1 overflow-x-auto flex-1 min-w-0 scrollbar-hide">
-          {tools.map((t) => {
-            const active = path === t.href;
-            return (
-              <Link
-                key={t.href}
-                href={t.href}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all duration-200 flex-shrink-0
-                  ${active
-                    ? "bg-[#4f6ef7]/20 text-[#818cf8] border border-[#4f6ef7]/30"
-                    : "text-white/40 hover:text-white/80 hover:bg-white/[0.06]"
-                  }`}
+      {/* Full-screen menu overlay */}
+      {open && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 200,
+          background: "#0c0c0c",
+          display: "flex", flexDirection: "column",
+          justifyContent: "flex-end",
+          padding: "3rem",
+          animation: "fade-in 0.3s ease both",
+        }}>
+          <button onClick={() => setOpen(false)} style={{
+            position: "absolute", top: "1.5rem", right: "3rem",
+            background: "none", border: "none", cursor: "pointer",
+            fontSize: "0.8rem", fontWeight: 600, letterSpacing: "0.12em",
+            textTransform: "uppercase", color: "#f5f4f0",
+          }}>Close ×</button>
+
+          <div style={{ marginBottom: "3rem" }}>
+            {tools.map((t, i) => (
+              <Link key={t.href} href={t.href} onClick={() => setOpen(false)} style={{
+                display: "block",
+                fontFamily: "var(--font-playfair)",
+                fontSize: "clamp(2.5rem, 6vw, 5rem)",
+                fontWeight: 700, letterSpacing: "-0.03em",
+                color: path === t.href ? "#888880" : "#f5f4f0",
+                textDecoration: "none",
+                lineHeight: 1.1,
+                borderTop: i === 0 ? "1px solid rgba(255,255,255,0.1)" : "none",
+                paddingTop: "0.6rem",
+                paddingBottom: "0.6rem",
+                marginTop: "0.4rem",
+                transition: "color 0.2s",
+              }}
+              onMouseEnter={(e) => { if (path !== t.href) (e.currentTarget as HTMLElement).style.color = "#aaa"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = path === t.href ? "#888880" : "#f5f4f0"; }}
               >
-                <span className="text-sm leading-none">{t.icon}</span>
                 {t.label}
               </Link>
-            );
-          })}
-        </div>
+            ))}
+          </div>
 
-        {/* Badge */}
-        <div className="flex-shrink-0 flex items-center gap-1.5 text-xs text-white/30 font-medium">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          Free
+          <p style={{ fontSize: "0.8rem", color: "rgba(245,244,240,0.3)", letterSpacing: "0.05em" }}>
+            Free · No account · Files stay local
+          </p>
         </div>
-      </div>
-    </nav>
+      )}
+    </>
   );
 }

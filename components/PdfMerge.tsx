@@ -59,10 +59,10 @@ export default function PdfMerge() {
   }, [files]);
 
   return (
-    <div className="min-h-screen bg-[#080810] p-6 flex flex-col items-center">
+    <div className="min-h-screen bg-[#f5f4f0] p-6 flex flex-col items-center">
       <div className="w-full max-w-xl">
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">Merge PDFs</h1>
-        <p className="text-gray-500 text-sm mb-6">Add PDFs below, drag to reorder, then download the merged result.</p>
+        <h1 className="text-2xl font-bold text-[#0c0c0c] mb-1">Merge PDFs</h1>
+        <p className="text-[#888880] text-sm mb-6">Add PDFs below, drag to reorder, then download the merged result.</p>
 
         {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">{error}</div>}
 
@@ -77,7 +77,7 @@ export default function PdfMerge() {
         >
           <div className="text-4xl mb-2">📄</div>
           <p className="text-gray-600 font-medium">Drop PDFs here or click to browse</p>
-          <p className="text-gray-400 text-sm mt-1">Add as many files as you like</p>
+          <p className="text-[#aaa] text-sm mt-1">Add as many files as you like</p>
         </div>
 
         {/* File list */}
@@ -88,7 +88,7 @@ export default function PdfMerge() {
                 <span className="text-2xl">📄</span>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-gray-800 truncate">{f.name}</div>
-                  <div className="text-xs text-gray-400">{f.pageCount} page{f.pageCount !== 1 ? "s" : ""}</div>
+                  <div className="text-xs text-[#aaa]">{f.pageCount} page{f.pageCount !== 1 ? "s" : ""}</div>
                 </div>
                 <div className="flex items-center gap-1">
                   <button onClick={() => moveUp(i)} disabled={i === 0} className="p-1 text-gray-300 hover:text-gray-600 disabled:opacity-20">▲</button>
@@ -103,11 +103,11 @@ export default function PdfMerge() {
         <button
           onClick={merge}
           disabled={files.length < 2 || isProcessing}
-          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-medium py-3 rounded-xl transition-colors"
+          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 disabled:text-[#aaa] text-white font-medium py-3 rounded-xl transition-colors"
         >
           {isProcessing ? "Merging…" : `Merge ${files.length} PDF${files.length !== 1 ? "s" : ""} → Download`}
         </button>
-        {files.length < 2 && <p className="text-xs text-gray-400 text-center mt-2">Add at least 2 PDFs to merge</p>}
+        {files.length < 2 && <p className="text-xs text-[#aaa] text-center mt-2">Add at least 2 PDFs to merge</p>}
       </div>
     </div>
   );

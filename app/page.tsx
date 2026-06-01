@@ -1,246 +1,262 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 
 const tools = [
-  {
-    href: "/editor",
-    icon: "✏️",
-    num: "01",
-    title: "Edit Text",
-    desc: "Click any word in your PDF to rewrite it. Color, font weight, and style preserved automatically.",
-    tag: "Most used",
-  },
-  {
-    href: "/merge",
-    icon: "🔗",
-    num: "02",
-    title: "Merge PDFs",
-    desc: "Drag and drop multiple files, reorder them, and combine into one seamless document.",
-    tag: null,
-  },
-  {
-    href: "/split",
-    icon: "✂️",
-    num: "03",
-    title: "Split Pages",
-    desc: "Visual thumbnail grid. Select the pages you want to extract or remove, then download.",
-    tag: null,
-  },
-  {
-    href: "/sign",
-    icon: "✍️",
-    num: "04",
-    title: "Fill & Sign",
-    desc: "Draw your signature on a pad, then click anywhere on the PDF to place it.",
-    tag: null,
-  },
-  {
-    href: "/annotate",
-    icon: "🖊️",
-    num: "05",
-    title: "Annotate",
-    desc: "Highlight passages, draw freehand, or drop text notes directly on your PDF.",
-    tag: null,
-  },
+  { href: "/editor",   num: "01", title: "Edit Text",   desc: "Click any word to rewrite it. Color, bold and italic preserved." },
+  { href: "/merge",    num: "02", title: "Merge PDFs",   desc: "Combine multiple files into one. Drag to reorder." },
+  { href: "/split",    num: "03", title: "Split Pages",  desc: "Visual page grid. Extract or remove pages." },
+  { href: "/sign",     num: "04", title: "Fill & Sign",  desc: "Draw a signature and place it anywhere." },
+  { href: "/annotate", num: "05", title: "Annotate",     desc: "Highlight, draw and add text notes." },
 ];
 
 export default function Home() {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [progress, setProgress] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+  const [exiting, setExiting] = useState(false);
 
-  // Mouse-tracking glow on cards
   useEffect(() => {
-    const cards = document.querySelectorAll<HTMLElement>(".tool-card");
-    const onMove = (e: MouseEvent) => {
-      cards.forEach((card) => {
-        const rect = card.getBoundingClientRect();
-        card.style.setProperty("--mx", `${e.clientX - rect.left}px`);
-        card.style.setProperty("--my", `${e.clientY - rect.top}px`);
-      });
+    // Count from 0 → 100 over ~1.6s
+    let current = 0;
+    const step = () => {
+      const increment = Math.ceil(Math.random() * 8) + 2;
+      current = Math.min(current + increment, 100);
+      setProgress(current);
+      if (current < 100) {
+        setTimeout(step, 18 + Math.random() * 30);
+      } else {
+        setTimeout(() => {
+          setExiting(true);
+          setTimeout(() => setLoaded(true), 950);
+        }, 300);
+      }
     };
-    window.addEventListener("mousemove", onMove);
-    return () => window.removeEventListener("mousemove", onMove);
+    setTimeout(step, 200);
   }, []);
 
   return (
-    <div ref={containerRef} className="relative min-h-screen overflow-hidden" style={{ paddingTop: "56px" }}>
-
-      {/* ── Background orbs ── */}
-      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-        <div style={{
-          position: "absolute", top: "10%", left: "15%",
-          width: 600, height: 600, borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(79,110,247,0.12) 0%, transparent 70%)",
-          animation: "orb-float 18s ease-in-out infinite",
-        }} />
-        <div style={{
-          position: "absolute", bottom: "5%", right: "10%",
-          width: 500, height: 500, borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(167,139,250,0.1) 0%, transparent 70%)",
-          animation: "orb-float 24s ease-in-out infinite reverse",
-        }} />
-      </div>
-
-      <div className="relative z-10 max-w-6xl mx-auto px-6 pt-20 pb-32">
-
-        {/* ── Hero ── */}
-        <div className="mb-20">
-          {/* Eyebrow */}
-          <div className="animate-fade-up flex items-center gap-2 mb-8">
-            <div style={{
-              display: "inline-flex", alignItems: "center", gap: "6px",
-              padding: "4px 12px", borderRadius: 999,
-              border: "1px solid rgba(79,110,247,0.3)",
-              background: "rgba(79,110,247,0.08)",
-              fontSize: "11px", fontWeight: 600, letterSpacing: "0.1em",
-              color: "#818cf8", textTransform: "uppercase",
-            }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#4f6ef7", display: "inline-block" }} />
-              100% Free · No account · Files stay local
-            </div>
+    <>
+      {/* ── Loader ── */}
+      {!loaded && (
+        <div className={`loader ${exiting ? "exit" : ""}`}>
+          <div style={{
+            fontFamily: "var(--font-inter)",
+            fontSize: "0.75rem", letterSpacing: "0.12em",
+            textTransform: "uppercase", color: "rgba(245,244,240,0.4)",
+            marginBottom: "0.75rem",
+          }}>
+            Loading content
           </div>
-
-          {/* Headline */}
-          <h1 className="animate-fade-up delay-100" style={{
-            fontSize: "clamp(3rem, 8vw, 7rem)",
-            fontWeight: 800,
-            lineHeight: 1.0,
+          <div style={{
+            fontFamily: "var(--font-playfair)",
+            fontSize: "clamp(4rem, 12vw, 9rem)",
+            fontWeight: 800, lineHeight: 1,
             letterSpacing: "-0.04em",
-            marginBottom: "1.5rem",
+            color: "#f5f4f0",
           }}>
-            <span className="text-gradient">Edit any PDF.</span>
-            <br />
-            <span style={{ color: "rgba(240,240,255,0.25)", fontWeight: 700 }}>In your browser.</span>
-          </h1>
-
-          {/* Sub */}
-          <p className="animate-fade-up delay-200" style={{
-            fontSize: "1.125rem",
-            color: "rgba(240,240,255,0.45)",
-            maxWidth: 540,
-            lineHeight: 1.7,
-          }}>
-            Text editing, merging, signing, annotating — everything Adobe charges for,
-            rebuilt as a free tool that processes files entirely on your device.
-          </p>
-
-          {/* CTA */}
-          <div className="animate-fade-up delay-300" style={{ marginTop: "2rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-            <Link href="/editor" style={{
-              display: "inline-flex", alignItems: "center", gap: "8px",
-              padding: "12px 28px", borderRadius: 12, fontWeight: 600, fontSize: "0.9rem",
-              background: "linear-gradient(135deg, #4f6ef7, #a78bfa)",
-              color: "#fff",
-              boxShadow: "0 8px 32px rgba(79,110,247,0.4)",
-              transition: "transform 0.2s, box-shadow 0.2s",
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLElement).style.boxShadow = "0 14px 40px rgba(79,110,247,0.55)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = "0 8px 32px rgba(79,110,247,0.4)"; }}
-            >
-              Start editing
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 7h12M8 2l5 5-5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </Link>
-            <a href="https://github.com/nick57564/PDF_editor" target="_blank" rel="noopener" style={{
-              display: "inline-flex", alignItems: "center", gap: "8px",
-              padding: "12px 28px", borderRadius: 12, fontWeight: 600, fontSize: "0.9rem",
-              background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
-              color: "rgba(255,255,255,0.6)",
-              transition: "all 0.2s",
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.08)"; (e.currentTarget as HTMLElement).style.color = "#fff"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"; (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.6)"; }}
-            >
-              View on GitHub
-            </a>
+            {progress}%
           </div>
         </div>
+      )}
 
-        {/* ── Divider ── */}
-        <div className="animate-fade-up delay-300" style={{
-          display: "flex", alignItems: "center", gap: "1rem", marginBottom: "3rem",
-        }}>
-          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.06)" }} />
-          <span style={{ fontSize: "11px", letterSpacing: "0.15em", color: "rgba(255,255,255,0.2)", textTransform: "uppercase", fontWeight: 600 }}>Tools</span>
-          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.06)" }} />
-        </div>
+      {/* ── Page content ── */}
+      {loaded && (
+        <div style={{ minHeight: "100vh", background: "#f5f4f0" }}>
 
-        {/* ── Tool cards ── */}
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
-          gap: "1rem",
-        }}>
-          {tools.map((t, i) => (
-            <Link
-              key={t.href}
-              href={t.href}
-              className={`tool-card animate-fade-up delay-${(i + 3) * 100} glow-border`}
-              style={{ textDecoration: "none" }}
-            >
-              {/* Number + tag */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.5rem" }}>
-                <span style={{ fontSize: "11px", fontWeight: 700, color: "rgba(255,255,255,0.15)", letterSpacing: "0.1em" }}>
-                  {t.num}
-                </span>
-                {t.tag && (
-                  <span style={{
-                    fontSize: "10px", fontWeight: 700, letterSpacing: "0.08em",
-                    padding: "3px 8px", borderRadius: 999,
-                    background: "rgba(79,110,247,0.15)", border: "1px solid rgba(79,110,247,0.3)",
-                    color: "#818cf8",
-                  }}>{t.tag}</span>
-                )}
-              </div>
+          {/* ── Hero ── */}
+          <section style={{
+            minHeight: "100vh",
+            display: "flex", flexDirection: "column",
+            justifyContent: "flex-end",
+            padding: "0 3rem 4rem",
+            position: "relative",
+            overflow: "hidden",
+          }}>
+            {/* Big background number */}
+            <div style={{
+              position: "absolute", top: "50%", right: "3rem",
+              transform: "translateY(-50%)",
+              fontFamily: "var(--font-playfair)",
+              fontSize: "clamp(12rem, 30vw, 26rem)",
+              fontWeight: 900, lineHeight: 1,
+              letterSpacing: "-0.06em",
+              color: "rgba(12,12,12,0.04)",
+              userSelect: "none", pointerEvents: "none",
+              animation: "reveal-up 1.2s cubic-bezier(0.16,1,0.3,1) 0.1s both",
+            }}>
+              PDF
+            </div>
 
-              {/* Icon */}
-              <div style={{
-                width: 48, height: 48, borderRadius: 14, marginBottom: "1.25rem",
-                background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: "1.5rem",
-                boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
+            {/* Eyebrow */}
+            <div className="animate-fade-in delay-100" style={{
+              fontSize: "0.75rem", fontWeight: 500,
+              letterSpacing: "0.15em", textTransform: "uppercase",
+              color: "#888880", marginBottom: "2rem",
+              display: "flex", alignItems: "center", gap: "0.75rem",
+            }}>
+              <span style={{ width: 24, height: 1, background: "#888880", display: "inline-block" }} />
+              Free · No account · Files stay local
+            </div>
+
+            {/* Main headline */}
+            <h1 className="animate-reveal-up delay-100" style={{
+              fontFamily: "var(--font-playfair)",
+              fontSize: "clamp(3.5rem, 9vw, 8rem)",
+              fontWeight: 800, lineHeight: 1.0,
+              letterSpacing: "-0.04em",
+              maxWidth: "14ch",
+              marginBottom: "3rem",
+            }}>
+              We build the<br />
+              <em style={{ fontStyle: "italic", color: "#444" }}>future of</em><br />
+              PDF editing.
+            </h1>
+
+            {/* Sub + CTA row */}
+            <div className="animate-fade-in delay-300" style={{
+              display: "flex", alignItems: "flex-end",
+              justifyContent: "space-between", flexWrap: "wrap", gap: "2rem",
+            }}>
+              <p style={{
+                fontSize: "1rem", color: "#888880",
+                maxWidth: "36ch", lineHeight: 1.7,
+                fontWeight: 400,
               }}>
-                {t.icon}
-              </div>
-
-              {/* Title */}
-              <h3 style={{
-                fontSize: "1.1rem", fontWeight: 700, color: "#f0f0ff",
-                marginBottom: "0.6rem", letterSpacing: "-0.02em",
-              }}>{t.title}</h3>
-
-              {/* Description */}
-              <p style={{ fontSize: "0.85rem", color: "rgba(240,240,255,0.4)", lineHeight: 1.6, margin: 0 }}>
-                {t.desc}
+                Everything Adobe Acrobat charges for —
+                rebuilt as a free browser tool that processes
+                your files entirely on your device.
               </p>
+              <Link href="/editor" style={{
+                display: "inline-flex", alignItems: "center", gap: "0.75rem",
+                padding: "1rem 2rem",
+                background: "#0c0c0c", color: "#f5f4f0",
+                borderRadius: "100px",
+                fontWeight: 500, fontSize: "0.9rem",
+                textDecoration: "none", letterSpacing: "0.01em",
+                transition: "transform 0.3s, box-shadow 0.3s",
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.transform = "scale(1.04)"; (e.currentTarget as HTMLElement).style.boxShadow = "0 8px 32px rgba(0,0,0,0.25)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = ""; }}
+              >
+                Explore tools
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 7h12M8 2l5 5-5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </Link>
+            </div>
 
-              {/* Arrow */}
-              <div style={{
-                marginTop: "1.5rem", display: "flex", alignItems: "center", gap: "6px",
-                fontSize: "12px", fontWeight: 600, color: "rgba(79,110,247,0.7)",
-                transition: "gap 0.2s, color 0.2s",
+            {/* Scroll hint */}
+            <div className="animate-fade-in delay-500" style={{
+              position: "absolute", bottom: "2rem", right: "3rem",
+              fontSize: "0.7rem", letterSpacing: "0.15em",
+              textTransform: "uppercase", color: "#bbb",
+              display: "flex", alignItems: "center", gap: "0.5rem",
+              writingMode: "vertical-rl",
+            }}>
+              Scroll ↓
+            </div>
+          </section>
+
+          {/* ── Tools section ── */}
+          <section style={{ padding: "6rem 3rem", borderTop: "1px solid #e0ddd6" }}>
+            {/* Section header */}
+            <div className="animate-fade-in" style={{
+              display: "flex", justifyContent: "space-between",
+              alignItems: "flex-end", marginBottom: "1rem",
+            }}>
+              <h2 style={{
+                fontFamily: "var(--font-playfair)",
+                fontSize: "clamp(2rem, 4vw, 3.5rem)",
+                fontWeight: 700, letterSpacing: "-0.03em",
               }}>
-                Open tool
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 6h10M7 2l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              </div>
-            </Link>
-          ))}
-        </div>
+                Our tools
+              </h2>
+              <span style={{ fontSize: "0.8rem", color: "#888880", letterSpacing: "0.1em" }}>
+                {tools.length} available
+              </span>
+            </div>
 
-        {/* ── Footer bar ── */}
-        <div className="animate-fade-up delay-600" style={{
-          marginTop: "5rem", paddingTop: "2rem",
-          borderTop: "1px solid rgba(255,255,255,0.05)",
-          display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem",
-        }}>
-          <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.2)" }}>
-            Files are processed in your browser. Nothing is ever uploaded.
-          </p>
-          <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.15)" }}>
-            Built with Next.js · pdf-lib · PDF.js
-          </p>
+            {/* Tool list */}
+            <div style={{ marginTop: "0" }}>
+              {tools.map((t) => (
+                <Link key={t.href} href={t.href} className="tool-card">
+                  {/* Number */}
+                  <span style={{
+                    fontSize: "0.7rem", fontWeight: 600,
+                    color: "#bbb", letterSpacing: "0.08em",
+                    paddingTop: "0.4rem",
+                  }}>{t.num}</span>
+
+                  {/* Title */}
+                  <h3 style={{
+                    fontFamily: "var(--font-playfair)",
+                    fontSize: "clamp(1.5rem, 3vw, 2.2rem)",
+                    fontWeight: 700, letterSpacing: "-0.02em",
+                    lineHeight: 1.1,
+                  }}>{t.title}</h3>
+
+                  {/* Description */}
+                  <p style={{ fontSize: "0.875rem", color: "#888880", lineHeight: 1.6 }}>
+                    {t.desc}
+                  </p>
+
+                  {/* Arrow */}
+                  <div className="card-arrow" style={{ paddingTop: "0.3rem", textAlign: "right" }}>
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                      <path d="M4 16L16 4M16 4H8M16 4v8" stroke="#0c0c0c" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                </Link>
+              ))}
+              {/* Last border */}
+              <div style={{ borderTop: "1px solid #e0ddd6" }} />
+            </div>
+          </section>
+
+          {/* ── Values strip ── */}
+          <section style={{
+            padding: "4rem 3rem",
+            background: "#0c0c0c",
+            display: "flex", flexWrap: "wrap", gap: "3rem",
+          }}>
+            {["Open source", "Zero tracking", "Files stay local", "No account needed"].map((v) => (
+              <div key={v} style={{ flex: "1 1 200px" }}>
+                <div style={{
+                  width: 32, height: 1,
+                  background: "rgba(245,244,240,0.2)",
+                  marginBottom: "1rem",
+                }} />
+                <p style={{
+                  fontFamily: "var(--font-playfair)",
+                  fontSize: "1.2rem", fontWeight: 600,
+                  color: "#f5f4f0", letterSpacing: "-0.01em",
+                }}>{v}</p>
+              </div>
+            ))}
+          </section>
+
+          {/* ── Footer ── */}
+          <footer style={{
+            padding: "2rem 3rem",
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            flexWrap: "wrap", gap: "1rem",
+            borderTop: "1px solid #e0ddd6",
+          }}>
+            <span style={{
+              fontFamily: "var(--font-playfair)",
+              fontWeight: 700, fontSize: "1rem", letterSpacing: "-0.02em",
+            }}>
+              PDF<em style={{ fontStyle: "italic" }}>editor</em>
+            </span>
+            <span style={{ fontSize: "0.8rem", color: "#888880" }}>
+              Built with Next.js · pdf-lib · PDF.js
+            </span>
+            <a href="https://github.com/nick57564/PDF_editor" target="_blank" rel="noopener"
+              style={{ fontSize: "0.8rem", color: "#0c0c0c", textDecoration: "none", borderBottom: "1px solid #ccc" }}>
+              GitHub →
+            </a>
+          </footer>
         </div>
-      </div>
-    </div>
+      )}
+    </>
   );
 }

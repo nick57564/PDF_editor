@@ -79,10 +79,10 @@ export default function PdfSplit() {
   }, [pdfBytes, selectedIndices, mode, thumbs, pdfName]);
 
   if (!pdfBytes) return (
-    <div className="min-h-screen bg-[#080810] flex flex-col items-center justify-center p-6">
+    <div className="min-h-screen bg-[#f5f4f0] flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-lg">
-        <h1 className="text-2xl font-bold text-gray-900 mb-1 text-center">Split PDF</h1>
-        <p className="text-gray-500 text-sm mb-6 text-center">Select pages to extract or remove.</p>
+        <h1 className="text-2xl font-bold text-[#0c0c0c] mb-1 text-center">Split PDF</h1>
+        <p className="text-[#888880] text-sm mb-6 text-center">Select pages to extract or remove.</p>
         {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">{error}</div>}
         <div
           onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
@@ -100,11 +100,11 @@ export default function PdfSplit() {
   );
 
   return (
-    <div className="min-h-screen bg-[#080810] p-6">
+    <div className="min-h-screen bg-[#f5f4f0] p-6">
       <div className="max-w-4xl mx-auto">
         <div className="flex flex-wrap items-center gap-3 mb-6">
-          <h1 className="text-xl font-bold text-gray-900 flex-1">{pdfName}</h1>
-          <button onClick={() => { setPdfBytes(null); setThumbs([]); }} className="text-sm text-gray-400 hover:text-red-500">✕ Close</button>
+          <h1 className="text-xl font-bold text-[#0c0c0c] flex-1">{pdfName}</h1>
+          <button onClick={() => { setPdfBytes(null); setThumbs([]); }} className="text-sm text-[#aaa] hover:text-red-500">✕ Close</button>
         </div>
 
         {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">{error}</div>}
@@ -115,14 +115,14 @@ export default function PdfSplit() {
             {(["extract","remove"] as const).map((m) => (
               <button key={m} onClick={() => setMode(m)}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
-                  ${mode === m ? "bg-blue-600 text-white" : "text-gray-500 hover:text-gray-700"}`}>
+                  ${mode === m ? "bg-blue-600 text-white" : "text-[#888880] hover:text-gray-700"}`}>
                 {m === "extract" ? "Extract selected" : "Remove selected"}
               </button>
             ))}
           </div>
           <button onClick={selectAll} className="text-sm text-blue-600 hover:underline">Select all</button>
-          <button onClick={selectNone} className="text-sm text-gray-400 hover:underline">None</button>
-          <span className="text-sm text-gray-400 ml-auto">{selectedIndices.length} of {thumbs.length} selected</span>
+          <button onClick={selectNone} className="text-sm text-[#aaa] hover:underline">None</button>
+          <span className="text-sm text-[#aaa] ml-auto">{selectedIndices.length} of {thumbs.length} selected</span>
         </div>
 
         {/* Thumbnails */}
@@ -141,7 +141,7 @@ export default function PdfSplit() {
         <button
           onClick={process}
           disabled={selectedIndices.length === 0 || isProcessing}
-          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-medium py-3 rounded-xl transition-colors"
+          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 disabled:text-[#aaa] text-white font-medium py-3 rounded-xl transition-colors"
         >
           {isProcessing ? "Processing…" : mode === "extract" ? `Extract ${selectedIndices.length} page(s) → Download` : `Remove ${selectedIndices.length} page(s) → Download`}
         </button>
