@@ -13,7 +13,10 @@ export function isLargeFile(bytes: ArrayBuffer, maxMB = 3): boolean {
   return bytes.byteLength > maxMB * 1024 * 1024;
 }
 
-/** Average color of a strip of pixels ABOVE the text — this is the background color. */
+/**
+ * Detect background color by finding the MOST COMMON color in the bounding box.
+ * Background pixels vastly outnumber text pixels, so mode = background.
+ */
 export function sampleBgColor(
   canvas: HTMLCanvasElement,
   vpX: number,
@@ -24,35 +27,39 @@ export function sampleBgColor(
   try {
     const ctx = canvas.getContext("2d");
     if (!ctx) return { hex: "#ffffff", r: 1, g: 1, b: 1 };
-    // Sample a strip of pixels just around the mid-height of the bounding box,
-    // but at the LEFT edge (1px wide) and RIGHT edge — likely background not glyph
-    const samples: number[][] = [];
-    const sampleAt = (sx: number, sy: number, sw: number, sh: number) => {
-      const x = Math.max(0, Math.round(sx));
-      const y = Math.max(0, Math.round(sy));
-      const w = Math.min(Math.round(sw), canvas.width - x);
-      const h = Math.min(Math.round(sh), canvas.height - y);
-      if (w <= 0 || h <= 0) return;
-      const data = ctx.getImageData(x, y, w, h).data;
-      for (let i = 0; i < data.length; i += 4) {
-        if (data[i + 3] > 128) samples.push([data[i], data[i+1], data[i+2]]);
-      }
-    };
-    // Sample above and below the text item
-    sampleAt(vpX, vpY - 3, Math.min(vpWidth, 30), 2);
-    sampleAt(vpX, vpY + vpHeight + 1, Math.min(vpWidth, 30), 2);
 
-    if (samples.length === 0) return { hex: "#ffffff", r: 1, g: 1, b: 1 };
+    const x = Math.max(0, Math.round(vpX));
+    const y = Math.max(0, Math.round(vpY));
+    const w = Math.min(Math.round(vpWidth), canvas.width - x);
+    const h = Math.min(Math.round(vpHeight), canvas.height - y);
+    if (w <= 0 || h <= 0) return { hex: "#ffffff", r: 1, g: 1, b: 1 };
 
-    // Use the most common brightness bucket (background is usually uniform)
-    let r = 0, g = 0, b = 0;
-    for (const s of samples) { r += s[0]; g += s[1]; b += s[2]; }
-    r = Math.round(r / samples.length);
-    g = Math.round(g / samples.length);
-    b = Math.round(b / samples.length);
+    const data = ctx.getImageData(x, y, w, h).data;
 
-    const hex = "#" + [r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("");
-    return { hex, r: r / 255, g: g / 255, b: b / 255 };
+    // Bucket colors into 32-step bins (5-bit per channel) to find the mode
+    const buckets = new Map<string, { count: number; r: number; g: number; b: number }>();
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] < 128) continue;
+      // Quantize to reduce noise
+      const r = data[i] & 0xe0;
+      const g = data[i + 1] & 0xe0;
+      const b = data[i + 2] & 0xe0;
+      const key = `${r},${g},${b}`;
+      const existing = buckets.get(key);
+      if (existing) { existing.count++; }
+      else { buckets.set(key, { count: 1, r, g, b }); }
+    }
+
+    if (buckets.size === 0) return { hex: "#ffffff", r: 1, g: 1, b: 1 };
+
+    // Most common bucket = background color
+    let best = { count: 0, r: 255, g: 255, b: 255 };
+    for (const v of buckets.values()) {
+      if (v.count > best.count) best = v;
+    }
+
+    const hex = "#" + [best.r, best.g, best.b].map((v) => v.toString(16).padStart(2, "0")).join("");
+    return { hex, r: best.r / 255, g: best.g / 255, b: best.b / 255 };
   } catch {
     return { hex: "#ffffff", r: 1, g: 1, b: 1 };
   }

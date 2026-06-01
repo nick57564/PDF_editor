@@ -592,7 +592,7 @@ export default function PdfEditor() {
                       onMouseLeave={(e) => { const el = e.currentTarget as HTMLDivElement; el.style.background = queued ? "rgba(251,191,36,0.35)" : "transparent"; el.style.outline = queued ? "1px solid rgba(251,191,36,0.6)" : "none"; }}
                     >
                       {isEditing ? (
-                        <div style={{ position: "absolute", top: 0, left: 0, zIndex: 10, display: "flex", alignItems: "center", background: "white", border: "1px solid #3b82f6", borderRadius: 4, boxShadow: "0 2px 8px rgba(0,0,0,0.15)", padding: "2px 4px", minWidth: Math.max(item.vpWidth, 120) }}>
+                        <div style={{ position: "absolute", top: 0, left: 0, zIndex: 10, display: "flex", alignItems: "center", background: "#1e293b", border: "2px solid #3b82f6", borderRadius: 6, boxShadow: "0 4px 12px rgba(0,0,0,0.4)", padding: "3px 6px", minWidth: Math.max(item.vpWidth, 140), gap: 4 }}>
                           <input
                             ref={editInputRef}
                             value={editValue}
@@ -603,27 +603,31 @@ export default function PdfEditor() {
                             }}
                             style={{
                               flex: 1,
-                              fontSize: Math.max(item.vpHeight * 0.85, 11),
-                              fontFamily: "Helvetica, Arial, sans-serif",
-                              color: editColor,
+                              fontSize: Math.max(item.vpHeight * 0.88, 12),
+                              fontFamily: item.cssFontFamily,
+                              fontWeight: item.fontWeight,
+                              color: "#ffffff",        // always white in the dark input box — readable
                               border: "none",
                               outline: "none",
                               background: "transparent",
                               minWidth: 60,
                             }}
                           />
-                          {/* Color picker — pre-filled with detected color */}
-                          <input
-                            type="color"
-                            value={editColor}
-                            onChange={(e) => setEditColor(e.target.value)}
-                            title="Text color"
-                            style={{ width: 20, height: 20, border: "none", padding: 0, cursor: "pointer", flexShrink: 0 }}
-                            onMouseDown={(e) => e.stopPropagation()}
-                          />
+                          {/* Color swatch — shows output color, click to change */}
+                          <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+                            <span style={{ fontSize: 9, color: "#94a3b8" }}>color</span>
+                            <input
+                              type="color"
+                              value={editColor}
+                              onChange={(e) => setEditColor(e.target.value)}
+                              title="Output text color"
+                              style={{ width: 18, height: 18, border: "1px solid #475569", borderRadius: 3, padding: 0, cursor: "pointer", background: "none" }}
+                              onMouseDown={(e) => e.stopPropagation()}
+                            />
+                          </div>
                           <button
                             onMouseDown={(e) => { e.preventDefault(); confirmEdit(item); }}
-                            style={{ fontSize: 11, padding: "0 4px", color: "#3b82f6", fontWeight: "bold", background: "none", border: "none", cursor: "pointer", flexShrink: 0 }}
+                            style={{ fontSize: 11, padding: "1px 6px", color: "#fff", fontWeight: "bold", background: "#3b82f6", border: "none", borderRadius: 4, cursor: "pointer", flexShrink: 0 }}
                           >✓</button>
                         </div>
                       ) : (
