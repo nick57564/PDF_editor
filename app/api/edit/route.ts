@@ -17,6 +17,9 @@ export interface PdfEdit {
   colorR?: number;
   colorG?: number;
   colorB?: number;
+  bgR?: number;
+  bgG?: number;
+  bgB?: number;
 }
 
 export const maxDuration = 10;
@@ -63,20 +66,17 @@ export async function POST(req: NextRequest) {
     const safeSize = Math.max(fontSize, 6);
 
     // Use detected text color, default to black
-    const textColor = rgb(
-      edit.colorR ?? 0,
-      edit.colorG ?? 0,
-      edit.colorB ?? 0
-    );
+    const textColor = rgb(edit.colorR ?? 0, edit.colorG ?? 0, edit.colorB ?? 0);
 
-    // Sample background color by slightly expanding the rectangle area
-    // We use white as a safe default — works for white-background PDFs
+    // Use detected background color (e.g. dark navy, not white)
+    const bgColor = rgb(edit.bgR ?? 1, edit.bgG ?? 1, edit.bgB ?? 1);
+
     page.drawRectangle({
-      x: x - 0.5,
-      y: y - 0.5,
-      width: width + 2,
-      height: height + 2,
-      color: rgb(1, 1, 1),
+      x: x - 1,
+      y: y - 1,
+      width: width + 3,
+      height: height + 3,
+      color: bgColor,
       opacity: 1,
     });
 

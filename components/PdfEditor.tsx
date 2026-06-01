@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { isCJK, isLargeFile, sampleTextColor } from "@/lib/pdf-coordinates";
+import { isCJK, isLargeFile, sampleTextColor, sampleBgColor, cssFontFromPdfName } from "@/lib/pdf-coordinates";
 
 // PDF.js loaded dynamically to avoid SSR issues
 let pdfjsLib: typeof import("pdfjs-dist") | null = null;
@@ -52,6 +52,12 @@ interface TextItem {
   colorG: number;
   colorB: number;
   colorHex: string;
+  bgHex: string;
+  bgR: number;
+  bgG: number;
+  bgB: number;
+  cssFontFamily: string;
+  fontWeight: string;
 }
 
 interface QueuedEdit {
@@ -68,6 +74,9 @@ interface QueuedEdit {
   colorG: number;
   colorB: number;
   colorHex: string;
+  bgR: number;
+  bgG: number;
+  bgB: number;
 }
 
 interface RenderedPage {
@@ -105,6 +114,8 @@ export default function PdfEditor() {
   const [showHistory, setShowHistory] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
+  // Refs to the visible canvases so we can redraw them live
+  const displayCanvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map());
 
   useEffect(() => {
     if (editingId && editInputRef.current) {
@@ -112,6 +123,47 @@ export default function PdfEditor() {
       editInputRef.current.select();
     }
   }, [editingId]);
+
+  // ── Live canvas preview ─────────────────────────────────────────────────
+  // Redraws visible canvases whenever edits change or typing happens live
+  useEffect(() => {
+    for (const pg of pages) {
+      const el = displayCanvasRefs.current.get(pg.pageIndex);
+      if (!el) continue;
+      const ctx = el.getContext("2d");
+      if (!ctx) continue;
+
+      // 1. Restore the original rendered page
+      ctx.drawImage(pg.canvas, 0, 0);
+
+      // Helper: cover original text + draw replacement on canvas
+      const applyEdit = (item: TextItem, newText: string, colorHex: string) => {
+        // Cover original with background color
+        ctx.fillStyle = item.bgHex;
+        ctx.fillRect(item.vpX - 1, item.vpY - 1, item.vpWidth + 3, item.vpHeight + 3);
+        // Draw replacement text
+        const fs = Math.max(item.vpHeight * 0.88, 6);
+        ctx.font = `${item.fontWeight} ${fs}px ${item.cssFontFamily}`;
+        ctx.fillStyle = colorHex;
+        ctx.fillText(newText, item.vpX, item.vpY + fs);
+      };
+
+      // 2. Draw all queued edits
+      for (const edit of editQueue) {
+        if (edit.pageIndex !== pg.pageIndex) continue;
+        const item = textItems.find((t) => t.id === edit.itemId);
+        if (item) applyEdit(item, edit.newText, edit.colorHex);
+      }
+
+      // 3. Live preview: currently being typed
+      if (editingId && editValue) {
+        const item = textItems.find((t) => t.id === editingId);
+        if (item && item.pageIndex === pg.pageIndex) {
+          applyEdit(item, editValue, editColor);
+        }
+      }
+    }
+  }, [editQueue, editingId, editValue, editColor, pages, textItems]);
 
   const loadPdf = useCallback(async (bytes: ArrayBuffer, name: string) => {
     setAppError(null);
@@ -197,7 +249,9 @@ export default function PdfEditor() {
           fontSize: pdfFontSize,
         };
 
-        const detectedColor = sampleTextColor(canvas, vpX, vpY, vpWidth, vpHeight);
+        const bg = sampleBgColor(canvas, vpX, vpY, vpWidth, vpHeight);
+        const detectedColor = sampleTextColor(canvas, vpX, vpY, vpWidth, vpHeight, bg.hex);
+        const { family: cssFontFamily, weight: fontWeight } = cssFontFromPdfName(item.fontName || "");
 
         allTextItems.push({
           id: `${i}-${allTextItems.length}`,
@@ -216,6 +270,12 @@ export default function PdfEditor() {
           colorG: detectedColor.g,
           colorB: detectedColor.b,
           colorHex: detectedColor.hex,
+          bgHex: bg.hex,
+          bgR: bg.r,
+          bgG: bg.g,
+          bgB: bg.b,
+          cssFontFamily,
+          fontWeight,
         });
       }
 
@@ -293,6 +353,9 @@ export default function PdfEditor() {
           colorG: g,
           colorB: b,
           colorHex: hex,
+          bgR: item.bgR,
+          bgG: item.bgG,
+          bgB: item.bgB,
         };
         if (existing >= 0) {
           const next = [...prev];
@@ -345,6 +408,9 @@ export default function PdfEditor() {
             colorR: e.colorR,
             colorG: e.colorG,
             colorB: e.colorB,
+            bgR: e.bgR,
+            bgG: e.bgG,
+            bgB: e.bgB,
           })),
         }),
       });
@@ -490,9 +556,15 @@ export default function PdfEditor() {
                 Page {pg.pageIndex + 1}
               </div>
 
-              {/* Canvas */}
+              {/* Canvas — stored in ref so live preview can redraw it */}
               <canvas
-                ref={(el) => { if (el) { el.width = pg.canvas.width; el.height = pg.canvas.height; el.getContext("2d")!.drawImage(pg.canvas, 0, 0); } }}
+                ref={(el) => {
+                  if (!el) return;
+                  el.width = pg.canvas.width;
+                  el.height = pg.canvas.height;
+                  el.getContext("2d")!.drawImage(pg.canvas, 0, 0);
+                  displayCanvasRefs.current.set(pg.pageIndex, el);
+                }}
                 style={{ display: "block" }}
               />
 
