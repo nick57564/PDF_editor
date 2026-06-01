@@ -2,9 +2,9 @@
 
 ## In Progress
 
-- [ ] Deploy to Vercel free tier
+- [ ] Deploy to Vercel free tier (blocked: fix GitHub account → push → connect Vercel)
 
-## v1 — PDF Text Editor (Core)
+## v1 — PDF Text Editor ✅ Done
 
 - [x] Scaffold Next.js app with Tailwind
 - [x] Drag-and-drop PDF upload (File API, client-side)
@@ -24,22 +24,24 @@
 - [x] Mobile single-column layout (viewer → queue stacked)
 - [x] All user-facing error messages (size, scanned, encrypted, timeout, CJK)
 
-## v2 — More Features
+## v2 — More Features ✅ Done
 
-- [ ] Merge multiple PDFs (client-side, pdf-lib)
-- [ ] Split / extract pages (client-side, pdf-lib)
-- [ ] Fill & sign PDF forms (AcroForm support via pdf-lib)
-- [ ] Annotate / highlight / draw
-- [ ] Undo history panel in edit queue
+- [x] Merge multiple PDFs (client-side, pdf-lib) → /merge
+- [x] Split / extract pages (with thumbnail preview) → /split
+- [x] Fill & sign — signature pad + place on PDF → /sign
+- [x] Annotate / highlight / draw / text notes → /annotate
+- [x] Undo history panel in edit queue sidebar
 
-## v1.5 — Nice to Have
+## v1.5 — Nice to Have ✅ Done
 
-- [ ] OCR for scanned PDFs (Tesseract.js — ~20MB bundle, evaluate later)
-- [ ] Password-protected PDF support
-- [ ] Plausible analytics (privacy-respecting, free tier)
+- [x] OCR for scanned PDFs (Tesseract.js, lazy-loaded) → in /editor sidebar
+- [x] Password-protected PDF support → in /editor + /sign
+- [x] Plausible analytics (script in layout.tsx, configure domain via NEXT_PUBLIC_PLAUSIBLE_DOMAIN)
 
 ## Done
 
-- [x] Created design doc (`~/.gstack/projects/nick57564-PDF_editor/`)
+- [x] Created design doc
 - [x] Connected repo to GitHub (nick57564/PDF_editor)
 - [x] Installed gstack
+- [x] Navigation bar across all tools
+- [x] Home page with tool cards

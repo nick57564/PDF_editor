@@ -22,6 +22,14 @@ export type AppError =
   | "timeout"
   | null;
 
+async function runOcr(canvas: HTMLCanvasElement): Promise<string> {
+  const { createWorker } = await import("tesseract.js");
+  const worker = await createWorker("eng");
+  const { data: { text } } = await worker.recognize(canvas);
+  await worker.terminate();
+  return text;
+}
+
 interface TextItem {
   id: string;
   str: string;
@@ -77,6 +85,15 @@ export default function PdfEditor() {
   const [cjkWarning, setCjkWarning] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  // Password support
+  const [password, setPassword] = useState("");
+  const [needsPassword, setNeedsPassword] = useState(false);
+  const [pendingBytes, setPendingBytes] = useState<{bytes: ArrayBuffer; name: string} | null>(null);
+  // OCR
+  const [isOcring, setIsOcring] = useState(false);
+  const [ocrText, setOcrText] = useState<string | null>(null);
+  // History panel toggle
+  const [showHistory, setShowHistory] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
 
@@ -104,16 +121,20 @@ export default function PdfEditor() {
     let pdf: import("pdfjs-dist").PDFDocumentProxy;
 
     try {
-      pdf = await pdfjs.getDocument({ data: bytes.slice(0) }).promise;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      pdf = await pdfjs.getDocument({ data: bytes.slice(0), password: (password || undefined) } as any).promise;
     } catch (err: unknown) {
       const msg = String(err);
       if (msg.toLowerCase().includes("password") || msg.toLowerCase().includes("encrypt")) {
-        setAppError("encrypted");
+        setNeedsPassword(true);
+        setPendingBytes({ bytes, name });
+        return;
       } else {
         setAppError("corrupt");
       }
       return;
     }
+    setNeedsPassword(false); setPendingBytes(null);
 
     const renderedPages: RenderedPage[] = [];
     const allTextItems: TextItem[] = [];
@@ -348,6 +369,20 @@ export default function PdfEditor() {
             </div>
           )}
 
+          {needsPassword && pendingBytes && (
+            <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+              <p className="text-sm font-medium text-yellow-800 mb-2">This PDF is password-protected</p>
+              <div className="flex gap-2">
+                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") loadPdf(pendingBytes.bytes, pendingBytes.name); }}
+                  placeholder="Enter password…"
+                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+                <button onClick={() => loadPdf(pendingBytes.bytes, pendingBytes.name)}
+                  className="bg-blue-600 text-white text-sm px-4 py-2 rounded-lg">Unlock</button>
+              </div>
+            </div>
+          )}
+
           <div
             onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
             onDragLeave={() => setIsDragging(false)}
@@ -485,16 +520,63 @@ export default function PdfEditor() {
       {/* Right: Edit queue */}
       <div className="w-72 flex-shrink-0 border-l border-gray-200 bg-white flex flex-col overflow-hidden">
         <div className="p-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-800 text-sm">Edit Queue</h2>
-          <p className="text-xs text-gray-400 mt-0.5">
-            {editQueue.length === 0
-              ? "Click any text in the PDF to edit it"
-              : `${editQueue.length} pending edit${editQueue.length !== 1 ? "s" : ""}`}
-          </p>
+          {/* Tab: Queue / History */}
+          <div className="flex gap-1 mb-2">
+            {[["queue","Edit Queue"],["history","History"]].map(([k,label]) => (
+              <button key={k} onClick={() => setShowHistory(k === "history")}
+                className={`flex-1 text-xs py-1.5 rounded-lg font-medium transition-colors
+                  ${(showHistory ? k==="history" : k==="queue") ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-100"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {!showHistory && (
+            <p className="text-xs text-gray-400">
+              {editQueue.length === 0 ? "Click any text in the PDF to edit it" : `${editQueue.length} pending edit${editQueue.length !== 1 ? "s" : ""}`}
+            </p>
+          )}
         </div>
 
-        {/* Queue items */}
+        {/* OCR panel (shown when scanned) */}
+        {appError === "scanned" && (
+          <div className="p-3 border-b border-gray-100 bg-orange-50">
+            <p className="text-xs text-orange-700 font-medium mb-2">Scanned PDF — run OCR to extract text</p>
+            <button onClick={async () => {
+              setIsOcring(true); setOcrText(null);
+              try {
+                const results: string[] = [];
+                for (const pg of pages) { results.push(await runOcr(pg.canvas)); }
+                setOcrText(results.join("\n\n--- Page break ---\n\n"));
+              } finally { setIsOcring(false); }
+            }} disabled={isOcring} className="w-full text-xs bg-orange-500 hover:bg-orange-600 text-white py-1.5 rounded-lg disabled:opacity-50">
+              {isOcring ? "Running OCR…" : "Run OCR (extract text)"}
+            </button>
+            {ocrText && (
+              <div className="mt-2">
+                <textarea readOnly value={ocrText} className="w-full h-32 text-xs border border-gray-200 rounded-lg p-2 resize-none" />
+                <button onClick={() => navigator.clipboard.writeText(ocrText)} className="text-xs text-blue-600 hover:underline mt-1">Copy to clipboard</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Queue / History items */}
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          {showHistory ? (
+            editQueue.length === 0
+              ? <div className="text-center text-gray-300 text-xs py-8">No edit history yet</div>
+              : editQueue.map((edit, i) => (
+                <div key={edit.itemId} className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-xs">
+                  <div className="flex justify-between items-start mb-1">
+                    <span className="text-gray-400">#{i+1} · p.{edit.pageIndex + 1}</span>
+                    <button onClick={() => removeEdit(edit.itemId)} className="text-gray-300 hover:text-red-400">✕</button>
+                  </div>
+                  <div className="text-gray-400 line-through truncate">{edit.originalText}</div>
+                  <div className="text-gray-800 font-medium truncate mt-0.5">→ {edit.newText}</div>
+                </div>
+              ))
+          ) : (
+            <>
           {editQueue.length === 0 && (
             <div className="text-center text-gray-300 text-xs py-8">No edits yet</div>
           )}
@@ -513,6 +595,8 @@ export default function PdfEditor() {
               <div className="text-gray-800 font-medium truncate mt-0.5">→ {edit.newText}</div>
             </div>
           ))}
+            </>
+          )}
         </div>
 
         {/* Footer actions */}
