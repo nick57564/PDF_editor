@@ -185,7 +185,7 @@ export default function PdfEditor() {
     setPages([]);
     setTextItems([]);
 
-    if (isLargeFile(bytes)) {
+    if (isLargeFile(bytes, 20)) {
       setAppError("too_large");
       return;
     }
@@ -304,15 +304,14 @@ export default function PdfEditor() {
       });
     }
 
-    if (totalTextItems === 0) {
-      setAppError("scanned");
-      return;
-    }
-
     setPdfBytes(bytes);
     setPdfName(name);
     setPages(renderedPages);
     setTextItems(allTextItems);
+
+    if (totalTextItems === 0) {
+      setAppError("scanned");
+    }
   }, []);
 
   const onFileChange = useCallback(
@@ -474,9 +473,9 @@ export default function PdfEditor() {
   }, [undoLast, editingId]);
 
   const ERROR_MESSAGES: Record<NonNullable<AppError>, string> = {
-    too_large: "This PDF is too large. Max supported size is ~3MB.",
-    scanned: "This PDF contains scanned images, not selectable text. OCR support coming soon.",
-    encrypted: "This PDF is password-protected. Password support coming soon.",
+    too_large: "This PDF is too large. Max supported size is ~20MB.",
+    scanned: "This PDF contains scanned images — no selectable text found. Use the OCR button in the sidebar to extract text.",
+    encrypted: "This PDF is password-protected. Enter the password above to unlock it.",
     corrupt: "This file appears damaged or is not a valid PDF.",
     timeout: "Edit timed out. Try downloading with fewer edits at once.",
   };
@@ -521,7 +520,7 @@ export default function PdfEditor() {
           >
             <div className="text-5xl mb-4">📄</div>
             <p className="text-gray-700 font-medium">Drop a PDF here</p>
-            <p className="text-gray-400 text-sm mt-1">or click to browse — max 3MB</p>
+            <p className="text-gray-400 text-sm mt-1">or click to browse — max 20MB</p>
             <input
               ref={fileInputRef}
               type="file"
