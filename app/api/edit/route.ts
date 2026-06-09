@@ -90,13 +90,14 @@ export async function POST(req: NextRequest) {
     // Use detected background color (e.g. dark navy, not white)
     const bgColor = rgb(edit.bgR ?? 1, edit.bgG ?? 1, edit.bgB ?? 1);
 
-    // Draw cover rectangle with generous padding so no original text peeks through
-    const padX = safeSize * 0.15;
-    const padY = safeSize * 0.25;
+    // Cover rectangle: use the EXACT original text bounding box (no extra bleed)
+    // Small padY so descenders are covered, but no horizontal expansion.
+    const padX = 0;
+    const padY = safeSize * 0.15;
     page.drawRectangle({
       x: x - padX,
       y: y - padY,
-      width: width + padX * 2 + safeSize * 0.5, // extra width for safety
+      width: width + padX * 2,
       height: height + padY * 2,
       color: bgColor,
       opacity: 1,
@@ -108,6 +109,7 @@ export async function POST(req: NextRequest) {
       size: safeSize,
       font,
       color: textColor,
+      maxWidth: width, // clip to original text width — never overflow into neighbours
     });
   }
 
