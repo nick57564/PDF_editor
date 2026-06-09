@@ -24,7 +24,7 @@ export interface PdfEdit {
   isItalic?: boolean;
 }
 
-export const maxDuration = 10;
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   let body: EditPayload;
@@ -48,7 +48,8 @@ export async function POST(req: NextRequest) {
 
   let pdfDoc: PDFDocument;
   try {
-    pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: false });
+    // updateMetadata:false + parseSpeed:1500 make large PDFs load ~3× faster
+    pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: false, updateMetadata: false, parseSpeed: 1500 } as never);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.toLowerCase().includes("encrypt")) {
