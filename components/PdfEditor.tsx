@@ -229,12 +229,11 @@ export default function PdfEditor() {
       for (const rawItem of textContent.items) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const item = rawItem as any;
+        const transform = item.transform as number[];
         // Keep items that have geometry even if str is empty/undecodable (custom font schematics etc.)
         const hasGeometry = (item.width > 0 || Math.abs(transform[3]) > 0);
         if (!hasGeometry) continue;
         totalTextItems++;
-
-        const transform = item.transform as number[];
 
         // Convert PDF user-space coords → canvas pixel coords using the viewport transform.
         // transform[4], transform[5] are in PDF points (user space).
