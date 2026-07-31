@@ -91,26 +91,47 @@ export async function POST(req: NextRequest) {
     // Use detected background color (e.g. dark navy, not white)
     const bgColor = rgb(edit.bgR ?? 1, edit.bgG ?? 1, edit.bgB ?? 1);
 
-    // Cover rectangle: use the EXACT original text bounding box (no extra bleed)
-    // Small padY so descenders are covered, but no horizontal expansion.
-    const padX = 0;
-    const padY = safeSize * 0.15;
+    // ── Auto-fit the replacement to the original footprint ──────────────────
+    // pdf-lib's `maxWidth` WRAPS overflow onto new lines (it does not clip),
+    // so any replacement even slightly wider than the original (e.g. a
+    // Helvetica redraw of a narrower source font) got broken onto extra lines
+    // that cascade down and overlap. Scale the font down to fit instead, so the
+    // replacement always stays on ONE line.
+    let renderSize = safeSize;
+    let newWidth = font.widthOfTextAtSize(newText, renderSize);
+    if (width > 0 && newWidth > width) {
+      renderSize = Math.max(6, safeSize * (width / newWidth));
+      newWidth = font.widthOfTextAtSize(newText, renderSize);
+    }
+
+    // ── Cover the ORIGINAL glyphs completely ────────────────────────────────
+    // `width` is an advance width and can fall short of the actual rendered ink
+    // (custom fonts, letter/word spacing, faux-bold), which left ghost pixels
+    // peeking out from under the replacement. Pad horizontally to match the
+    // live preview's coverage and cover the wider of the original box and the
+    // replacement so nothing of the original survives.
+    const padLeft = safeSize * 0.15;
+    const padRight = safeSize * 0.65;
+    const padY = safeSize * 0.25;
+    const coverWidth = Math.max(width, newWidth) + padLeft + padRight;
     page.drawRectangle({
-      x: x - padX,
+      x: x - padLeft,
       y: y - padY,
-      width: width + padX * 2,
+      width: coverWidth,
       height: height + padY * 2,
       color: bgColor,
       opacity: 1,
     });
 
+    // Draw the replacement on the ORIGINAL baseline. The incoming `y` sits
+    // fontSize*0.2 below the baseline (see client pdfCoords), so add it back
+    // instead of the old y + padY*0.3, which dropped the text ~0.15em too low.
     page.drawText(newText, {
       x,
-      y: y + padY * 0.3,
-      size: safeSize,
+      y: y + fontSize * 0.2,
+      size: renderSize,
       font,
       color: textColor,
-      maxWidth: width, // clip to original text width — never overflow into neighbours
     });
   }
 

@@ -143,21 +143,31 @@ export default function PdfEditor() {
 
       // Helper: cover original text + draw replacement on canvas
       const applyEdit = (item: TextItem, newText: string, colorHex: string) => {
-        const fs = Math.max(item.vpHeight * 0.88, 6);
-        const padX = fs * 0.15;
-        const padY = fs * 0.25;
+        const baseFs = Math.max(item.vpHeight * 0.88, 6);
+        const padX = baseFs * 0.15;
+        const padY = baseFs * 0.25;
         // Cover original with background color (generous padding)
         ctx.fillStyle = item.bgHex;
         ctx.fillRect(
           item.vpX - padX,
           item.vpY - padY,
-          item.vpWidth + padX * 2 + fs * 0.5,
+          item.vpWidth + padX * 2 + baseFs * 0.5,
           item.vpHeight + padY * 2
         );
-        // Draw replacement text matching original bold/italic
+        // Auto-fit width to mirror the server: shrink so the replacement stays
+        // on one line within the original footprint (keeps the preview honest —
+        // the downloaded PDF shrinks identically instead of wrapping).
+        let fs = baseFs;
         ctx.font = `${item.fontStyle} ${item.fontWeight} ${fs}px ${item.cssFontFamily}`;
+        const measured = ctx.measureText(newText).width;
+        if (item.vpWidth > 0 && measured > item.vpWidth) {
+          fs = Math.max(6, baseFs * (item.vpWidth / measured));
+          ctx.font = `${item.fontStyle} ${item.fontWeight} ${fs}px ${item.cssFontFamily}`;
+        }
+        // Draw replacement text matching original bold/italic. Baseline stays at
+        // the original text baseline (item.vpY + baseFs) regardless of shrink.
         ctx.fillStyle = colorHex;
-        ctx.fillText(newText, item.vpX, item.vpY + fs);
+        ctx.fillText(newText, item.vpX, item.vpY + baseFs);
       };
 
       // 2. Draw all queued edits
