@@ -39,3 +39,16 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.gstack/
+
+# local tooling / config — keep out of the public repo
+.claude/
+switch_git_account.bat
+
+# unrelated work material — keep local
+Automatisering_EquipmentEngineering.pptx
+automation_presentation.js
+
+# keep env templates (placeholders only), overriding the .env* rule above
+!webshop_v2/backend/.env.example
+!webshop_v2/frontend/.env.local.example

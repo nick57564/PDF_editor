@@ -1,0 +1,40 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Inter:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { scroll-behavior: smooth; }
+  body { @apply font-sans text-maison-black antialiased; }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 bg-maison-black text-white px-8 py-3.5
+           text-xs font-semibold tracking-widest uppercase transition-all duration-200
+           hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2 border border-maison-black text-maison-black
+           px-8 py-3.5 text-xs font-semibold tracking-widest uppercase transition-all duration-200
+           hover:bg-maison-black hover:text-white;
+  }
+  .btn-gold {
+    @apply inline-flex items-center justify-center gap-2 bg-gold text-white px-8 py-3.5
+           text-xs font-semibold tracking-widest uppercase transition-all duration-200 hover:bg-gold-dark;
+  }
+  .section-eyebrow {
+    @apply text-xs tracking-[0.3em] uppercase text-zinc-400 mb-2;
+  }
+  .section-title {
+    @apply font-serif text-4xl font-light text-maison-black;
+  }
+  .input {
+    @apply w-full border border-maison-border px-4 py-3 text-sm bg-white outline-none
+           focus:border-maison-black transition-colors placeholder:text-zinc-400;
+  }
+  .label {
+    @apply block text-xs font-medium tracking-wide uppercase text-zinc-500 mb-1.5;
+  }
+}
