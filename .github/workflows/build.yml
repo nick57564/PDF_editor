@@ -1,0 +1,77 @@
+# Builds the PDF Editor web app: the upstream PdfCraft release named in UPSTREAM_VERSION, with
+# patches/*.patch applied, compiled to WebAssembly and committed to public/ (Vercel serves that).
+name: Build PDF Editor
+
+on:
+  push:
+    branches: [main]
+    paths: ["patches/**", "UPSTREAM_VERSION", ".github/workflows/build.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-pdf-editor
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch upstream source and apply patches
+        run: |
+          VERSION="$(tr -d '[:space:]' < UPSTREAM_VERSION)"
+          git clone --depth 1 --branch "v$VERSION" https://github.com/storytold/pdfcraft.git upstream
+          cd upstream
+          for p in ../patches/*.patch; do git apply --whitespace=nowarn "$p"; done
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: upstream
+
+      - name: Prove the regression test catches the black-box bug
+        working-directory: upstream
+        run: |
+          cp crates/edit/src/text/fallback.rs /tmp/fallback.fixed.rs
+          git show HEAD:crates/edit/src/text/fallback.rs > crates/edit/src/text/fallback.rs
+          if cargo test -p pdfcraft-edit --lib glyphless 2>&1 | tee /tmp/unfixed.log; then
+            echo "::error::the test passed without the fix, so it does not catch the bug"; exit 1
+          fi
+          grep -q "test result: FAILED" /tmp/unfixed.log
+          cp /tmp/fallback.fixed.rs crates/edit/src/text/fallback.rs
+
+      - name: Test text editing (with the fix)
+        working-directory: upstream
+        run: cargo test -p pdfcraft-edit --lib
+
+      - name: Install trunk
+        run: |
+          curl -sSfL -o /tmp/trunk.tgz https://github.com/trunk-rs/trunk/releases/download/v0.22.1/trunk-x86_64-unknown-linux-gnu.tar.gz
+          curl -sSfL -o /tmp/trunk.sha https://github.com/trunk-rs/trunk/releases/download/v0.22.1/trunk-x86_64-unknown-linux-gnu.tar.gz.sha256
+          echo "$(cut -d' ' -f1 /tmp/trunk.sha)  /tmp/trunk.tgz" | sha256sum -c -
+          sudo tar xzf /tmp/trunk.tgz -C /usr/local/bin trunk
+
+      - name: Build the web app
+        working-directory: upstream/apps/pdfcraft-web
+        run: trunk build --release
+
+      - name: Publish to public/
+        run: |
+          rm -rf public && mkdir public
+          cp -R upstream/dist/web/. public/
+          cp upstream/LICENSE-MIT upstream/LICENSE-APACHE upstream/NOTICE public/
+          ls -la public
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A public
+          if git diff --cached --quiet; then echo "public/ is unchanged"; exit 0; fi
+          git commit -m "Build PDF Editor web app (PdfCraft $(tr -d '[:space:]' < UPSTREAM_VERSION) + patches)"
+          git push

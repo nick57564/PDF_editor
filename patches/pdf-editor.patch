@@ -1,0 +1,721 @@
+diff --git a/apps/pdfcraft-web/index.html b/apps/pdfcraft-web/index.html
+index 46b3a25..dfb7baa 100644
+--- a/apps/pdfcraft-web/index.html
++++ b/apps/pdfcraft-web/index.html
+@@ -3,15 +3,34 @@
+   <head>
+     <meta charset="utf-8" />
+     <meta name="viewport" content="width=device-width, initial-scale=1" />
+-    <title>PdfCraft</title>
++    <title>PDF Editor</title>
++    <meta name="description" content="Edit, sign, combine and convert PDFs in your browser. Your files never leave your device." />
++    <meta name="theme-color" content="#f5f4f9" media="(prefers-color-scheme: light)" />
++    <meta name="theme-color" content="#0b0b10" media="(prefers-color-scheme: dark)" />
++    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%236E4BF5'/%3E%3Cpath d='M22 14h14l10 10v24a4 4 0 0 1-4 4H22a4 4 0 0 1-4-4V18a4 4 0 0 1 4-4z' fill='none' stroke='white' stroke-width='4' stroke-linejoin='round'/%3E%3Cpath d='M36 14v10h10M25 34h14M25 42h10' fill='none' stroke='white' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E" />
+     <link data-trunk rel="rust" data-wasm-opt="z" />
+     <style>
+-      html, body { margin: 0; height: 100%; overflow: hidden; background: #f1f1f3; }
+-      canvas { width: 100%; height: 100%; display: block; outline: none; }
+-      @media (prefers-color-scheme: dark) { html, body { background: #19191c; } }
++      html, body { margin: 0; height: 100%; overflow: hidden; background: #f5f4f9; color: #565566;
++        font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
++      canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
++      .boot { position: fixed; inset: 0; display: grid; place-content: center; justify-items: center; gap: 18px; }
++      .mark { width: 56px; height: 56px; border-radius: 16px; background: #6e4bf5; box-shadow: 0 12px 40px rgba(110, 75, 245, .35);
++        animation: pulse 1.6s ease-in-out infinite; }
++      .bar { width: 160px; height: 4px; border-radius: 4px; background: rgba(110, 75, 245, .15); overflow: hidden; }
++      .bar::after { content: ""; display: block; width: 40%; height: 100%; border-radius: 4px; background: #6e4bf5;
++        animation: slide 1.2s ease-in-out infinite; }
++      @keyframes pulse { 50% { transform: scale(.92); opacity: .8; } }
++      @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
++      @media (prefers-color-scheme: dark) { html, body { background: #0b0b10; color: #a6a5b6; } }
++      @media (prefers-reduced-motion: reduce) { .mark, .bar::after { animation: none; } }
+     </style>
+   </head>
+   <body>
++    <div class="boot" aria-live="polite">
++      <div class="mark" aria-hidden="true"></div>
++      <div>Loading PDF Editor…</div>
++      <div class="bar" aria-hidden="true"></div>
++    </div>
+     <canvas id="pdfcraft"></canvas>
+   </body>
+ </html>
+diff --git a/crates/edit/src/tests.rs b/crates/edit/src/tests.rs
+index cbea5c2..ad47f80 100644
+--- a/crates/edit/src/tests.rs
++++ b/crates/edit/src/tests.rs
+@@ -10588,3 +10588,39 @@ fn review_inside_scope_group_move_matches_direct_transform_under_outer_scale() {
+         }
+     }
+ }
++
++/// An OCR or screenshot-to-PDF layer drawn in an outline-free font (`Glyphless`, Tesseract's
++/// `GlyphLessFont`) is revealed in a real font: reusing it would show blanks or black boxes.
++#[test]
++fn a_glyphless_ocr_layer_is_redrawn_in_a_real_font() {
++    for base in ["Glyphless", "ABCDEF+GlyphLessFont"] {
++        let mut doc = image_page_with("/Im0 Do BT /F1 20 Tf 3 Tr 42 44 Td (golfen) Tj ET");
++        let page = pdfcraft_model::pages(&doc)[0].obj;
++        let mut res = doc.dict(&Object::Ref(page)).and_then(|p| p.get(b"Resources").and_then(|r| doc.dict(r))).unwrap();
++        let mut font = Dict::new();
++        font.set(b"Type".to_vec(), Object::name("Font"));
++        font.set(b"Subtype".to_vec(), Object::name("Type1"));
++        font.set(b"BaseFont".to_vec(), Object::name(base));
++        font.set(b"Encoding".to_vec(), Object::name("WinAnsiEncoding"));
++        let mut fonts = Dict::new();
++        fonts.set(b"F1".to_vec(), Object::Dict(font));
++        res.set(b"Font".to_vec(), Object::Dict(fonts));
++        doc.update_dict(page, |d| d.set(b"Resources".to_vec(), Object::Dict(res))).unwrap();
++        assert!(text::text_blocks(&doc, 0).unwrap()[0].invisible);
++        text::rewrite_block(&mut doc, 0, 0, Some("golfen en strand"), &text::BlockStyle::default()).unwrap();
++        let doc = reopen(&doc);
++        let ops = pdfcraft_content::parse(&page_content_bytes(&doc, 0)).ops;
++        let fonts = page_fonts(&doc, &pdfcraft_model::pages(&doc)[0]);
++        let shown: Vec<String> = ops
++            .iter()
++            .filter(|o| o.is("Tf"))
++            .filter_map(|o| match o.operands.first() {
++                Some(Object::Name(n)) => fonts.get(n).map(|f| doc.resolve(f)).and_then(|f| f.as_dict().and_then(|d| d.name(b"BaseFont")).map(<[u8]>::to_vec)),
++                _ => None,
++            })
++            .map(|b| String::from_utf8_lossy(&b).into_owned())
++            .collect();
++        assert!(!shown.is_empty(), "{base}: the rewrite sets a font");
++        assert!(shown.iter().all(|b| !b.to_ascii_lowercase().contains("glyphless")), "{base}: drawn in a real font, not {shown:?}");
++    }
++}
+diff --git a/crates/edit/src/text/fallback.rs b/crates/edit/src/text/fallback.rs
+index 78f9014..7f4b858 100644
+--- a/crates/edit/src/text/fallback.rs
++++ b/crates/edit/src/text/fallback.rs
+@@ -532,7 +532,16 @@ pub(super) fn source_program_completes(doc: &Document, fonts: &Dict, line: &Text
+ /// A subset may contain all the letters but no space glyph: producers use another subset
+ /// or a positioning operator for spaces. Do the same instead of substituting the whole font.
+ pub(crate) fn source_encodes(metrics: &Metrics, text: &str) -> bool {
+-    text.split(' ').all(|word| metrics.encode(word).is_some())
++    !is_glyphless(&metrics.base_font) && text.split(' ').all(|word| metrics.encode(word).is_some())
++}
++
++/// The outline-free fonts OCR and screenshot-to-PDF tools put under an invisible text layer
++/// (Tesseract's `GlyphLessFont`, often named `Glyphless`). They encode every character, but
++/// draw nothing, or a box, so a rewrite that reuses them shows blanks or black boxes.
++/// Such text is always redrawn in a real font.
++pub(crate) fn is_glyphless(base_font: &str) -> bool {
++    let name = strip_subset_tag(base_font).to_ascii_lowercase();
++    name.starts_with("glyphless")
+ }
+ 
+ #[cfg(test)]
+diff --git a/crates/engine/src/commands.rs b/crates/engine/src/commands.rs
+index 0647726..c9e47c3 100644
+--- a/crates/engine/src/commands.rs
++++ b/crates/engine/src/commands.rs
+@@ -399,12 +399,7 @@ pub const COMMANDS: &[CommandSpec] = &[
+     c("page.number", "Number pages…", PAGES, None, Assembly, "hash"),
+     c("page.properties", "Page properties…", PAGES, None, Modification, "info"),
+     c("help.shortcuts", "Keyboard shortcuts", HELP, None, Nothing, "circle-help"),
+-    c("help.discord", "Join the ArtCraft Discord", HELP, None, Nothing, "messages-square"),
+-    c("help.app_page", "PdfCraft web page", HELP, None, Nothing, "globe"),
+-    c("help.github", "PdfCraft on GitHub", HELP, None, Nothing, "code-xml"),
+-    c("help.website", "ArtCraft website", HELP, None, Nothing, "external-link"),
+-    c("help.check_updates", "Check for updates…", HELP, None, Nothing, "cloud"),
+-    c("help.about", "About PdfCraft", HELP, None, Nothing, "info"),
++    c("help.about", "About PDF Editor", HELP, None, Nothing, "info"),
+ ];
+ 
+ pub fn command(id: &str) -> Option<&'static CommandSpec> {
+diff --git a/crates/engine/src/document.rs b/crates/engine/src/document.rs
+index fa98a18..f6a5229 100644
+--- a/crates/engine/src/document.rs
++++ b/crates/engine/src/document.rs
+@@ -129,7 +129,7 @@ impl std::fmt::Display for TextNotice {
+         match (&self.field, self.redrawn_elsewhere) {
+             (Some(name), true) => write!(
+                 f,
+-                "form field {name:?} (page {page}) holds {ch}, which its font can't draw: the value is saved, PdfCraft shows ? in its place, and other PDF viewers redraw the field from the value"
++                "form field {name:?} (page {page}) holds {ch}, which its font can't draw: the value is saved, PDF Editor shows ? in its place, and other PDF viewers redraw the field from the value"
+             ),
+             (Some(name), false) => write!(
+                 f,
+diff --git a/crates/engine/src/links.rs b/crates/engine/src/links.rs
+index e1d54d5..b6d1dfe 100644
+--- a/crates/engine/src/links.rs
++++ b/crates/engine/src/links.rs
+@@ -23,12 +23,7 @@ pub struct Link {
+ }
+ 
+ /// In the order they are shown. Discord comes first: it is where people get help fastest.
+-pub const LINKS: &[Link] = &[
+-    Link { command: "help.discord", label: "Join the ArtCraft Discord", url: DISCORD, icon: "messages-square" },
+-    Link { command: "help.app_page", label: "PdfCraft web page", url: APP_PAGE, icon: "globe" },
+-    Link { command: "help.github", label: "PdfCraft on GitHub", url: GITHUB, icon: "code-xml" },
+-    Link { command: "help.website", label: "ArtCraft website", url: WEBSITE, icon: "external-link" },
+-];
++pub const LINKS: &[Link] = &[];
+ 
+ pub fn for_command(id: &str) -> Option<&'static Link> {
+     LINKS.iter().find(|l| l.command == id)
+diff --git a/crates/engine/src/xfa_form.rs b/crates/engine/src/xfa_form.rs
+index 5ceaba1..122b41f 100644
+--- a/crates/engine/src/xfa_form.rs
++++ b/crates/engine/src/xfa_form.rs
+@@ -142,7 +142,7 @@ pub(crate) fn strip_xfa(doc: &mut pdfcraft_cos::Document, cx: &mut EditCtx) -> R
+     cx.xfa_removed.extend(r.notes());
+     if differ > 0 {
+         cx.xfa_removed.push(format!(
+-            "{differ} field(s) held a value other than the form's XFA data (data PdfCraft could not read into them); the data's version is gone"
++            "{differ} field(s) held a value other than the form's XFA data (data PDF Editor could not read into them); the data's version is gone"
+         ));
+     }
+     Ok(())
+diff --git a/crates/ui-egui/src/app.rs b/crates/ui-egui/src/app.rs
+index 43a1e5c..a125237 100644
+--- a/crates/ui-egui/src/app.rs
++++ b/crates/ui-egui/src/app.rs
+@@ -42,7 +42,7 @@ impl PdfCraftApp {
+         let mark = if dirty { " •" } else { "" };
+         let titled = |name: Option<String>| {
+             name.or_else(|| self.combine_showing().then(|| tl!("Combine files").to_owned()))
+-                .map_or_else(|| "PdfCraft".to_owned(), |name| format!("{name}{mark} — PdfCraft"))
++                .map_or_else(|| "PDF Editor".to_owned(), |name| format!("{name}{mark} — PDF Editor"))
+         };
+         let title = titled(self.active.and_then(|i| crate::canvas::tab_label(self, i)));
+         // The web page's title is what an embedding host reads to tell which file opened, so it
+diff --git a/crates/ui-egui/src/app/links.rs b/crates/ui-egui/src/app/links.rs
+index 77f9519..cc7fbdc 100644
+--- a/crates/ui-egui/src/app/links.rs
++++ b/crates/ui-egui/src/app/links.rs
+@@ -105,9 +105,9 @@ impl PdfCraftApp {
+             Err(e) => {
+                 use pdfcraft_engine::links::BlockedLink;
+                 let template = if matches!(e, BlockedLink::MailFile | BlockedLink::MailEncodedWord) {
+-                    "{who} in this document tried to open an address PdfCraft won't open: {e}."
++                    "{who} in this document tried to open an address PDF Editor won't open: {e}."
+                 } else {
+-                    "{who} in this document tried to open an address PdfCraft won't open: {e}. Only web (http, https) and email (mailto) links open from documents."
++                    "{who} in this document tried to open an address PDF Editor won't open: {e}. Only web (http, https) and email (mailto) links open from documents."
+                 };
+                 self.notify_fmt(template, &[("who", tl!(origin.noun())), ("e", &e.to_string())]);
+             }
+diff --git a/crates/ui-egui/src/canvas/area.rs b/crates/ui-egui/src/canvas/area.rs
+index d8891e7..57007ae 100644
+--- a/crates/ui-egui/src/canvas/area.rs
++++ b/crates/ui-egui/src/canvas/area.rs
+@@ -111,7 +111,7 @@ pub(super) fn run_button(app: &mut PdfCraftApp, index: usize, name: &str, action
+         }
+         B::Alert(m) => app.notify(m),
+         B::Submit(url) => app.notify_fmt(
+-            "{name} submits the form to {url}; PdfCraft doesn't send form data. Save the document to keep your entries.",
++            "{name} submits the form to {url}; PDF Editor doesn't send form data. Save the document to keep your entries.",
+             &[("name", name), ("url", &url)],
+         ),
+         B::ImportIcon => app.choose_field_image(name),
+diff --git a/crates/ui-egui/src/canvas/bars.rs b/crates/ui-egui/src/canvas/bars.rs
+index dd3fe8c..66f5b64 100644
+--- a/crates/ui-egui/src/canvas/bars.rs
++++ b/crates/ui-egui/src/canvas/bars.rs
+@@ -160,7 +160,7 @@ pub(super) fn notices(
+     } else if info.xfa == Some(pdfcraft_render::Xfa::Dynamic) {
+         Some((
+             "triangle-alert",
+-            tl!("This is a dynamic XFA form, which PdfCraft can't display yet. What you see is the file's placeholder page.").to_string(),
++            tl!("This is a dynamic XFA form, which PDF Editor can't display yet. What you see is the file's placeholder page.").to_string(),
+             false,
+         ))
+     } else if info.xfa == Some(pdfcraft_render::Xfa::Static) {
+diff --git a/crates/ui-egui/src/chrome.rs b/crates/ui-egui/src/chrome.rs
+index 56125d5..05cfd3b 100644
+--- a/crates/ui-egui/src/chrome.rs
++++ b/crates/ui-egui/src/chrome.rs
+@@ -69,10 +69,9 @@ pub fn tab_strip(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
+                     app.active = None;
+                     app.combine_tab.focused = false;
+                 }
+-                // Reserve the three icon buttons, Discord and their gaps outside the scrolling tabs.
+-                let controls_width = ui.fonts_mut(|f| f.layout_no_wrap("Discord".into(), theme::medium(13.0), t.text).size().x)
+-                    + 3.0 * button
+-                    + 54.0
++                // Reserve the three icon buttons and their gaps outside the scrolling tabs.
++                let controls_width = 3.0 * button
++                    + 24.0
+                     + window_controls::width(&controls.right);
+                 // Open stays in sight after the tabs: its icon, text and padding, and the gaps around it.
+                 let open_width = ui.fonts_mut(|f| f.layout_no_wrap(tl!("Open").into(), theme::medium(13.0), t.text).size().x) + 38.0 + 12.0;
+@@ -309,10 +308,6 @@ pub fn tab_strip(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
+                     if icons::button(ui, "circle-help", button, false, tl!("Keyboard shortcuts")).clicked() {
+                         app.dialog = Some(Dialog::Shortcuts);
+                     }
+-                    // One click to the community, from anywhere in the app.
+-                    if widgets::ghost_button_sized(ui, "messages-square", "Discord", tab_h).on_hover_text(pdfcraft_engine::links::DISCORD).clicked() {
+-                        app.execute("help.discord");
+-                    }
+                 });
+             });
+         });
+diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
+index 84c36f4..e2b8b91 100644
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -1465,7 +1465,7 @@ fn dialog_recovery(ui: &mut egui::Ui, app: &mut PdfCraftApp) -> bool {
+         ui.label(egui::RichText::new(tl!("Recover unsaved documents?")).font(theme::semibold(18.0)));
+     });
+     ui.add_space(6.0);
+-    ui.label(tl!("PdfCraft didn't shut down normally. These documents had changes that were autosaved:"));
++    ui.label(tl!("PDF Editor didn't shut down normally. These documents had changes that were autosaved:"));
+     ui.add_space(8.0);
+     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+     egui::Grid::new("recoverable").num_columns(2).spacing([18.0, 6.0]).show(ui, |ui| {
+@@ -1543,7 +1543,7 @@ fn dialog_shortcuts(ui: &mut egui::Ui) -> bool {
+ }
+ 
+ /// `Dialog::About` content. Returns `false` when it has its own buttons and no footer is wanted.
+-fn dialog_about(ui: &mut egui::Ui, req: &mut Pending) -> bool {
++fn dialog_about(ui: &mut egui::Ui, _req: &mut Pending) -> bool {
+     let t = Tokens::get(ui.ctx());
+     // Tabs About · Contributors · Models.
+     let tab_id = egui::Id::unique("about_tab");
+@@ -1563,14 +1563,15 @@ fn dialog_about(ui: &mut egui::Ui, req: &mut Pending) -> bool {
+         2 => crate::credits::models_ui(ui),
+         _ => {
+             ui.horizontal(|ui| {
+-                widgets::artcraft_mark(ui, 40.0);
++                widgets::app_mark(ui, 40.0);
+                 ui.vertical(|ui| {
+-                    ui.label(egui::RichText::new("PdfCraft").font(theme::semibold(20.0)));
++                    ui.label(egui::RichText::new(crate::menus::APP_NAME).font(theme::semibold(20.0)));
+                     ui.label(crate::i18n::fmt(tl!("Version {v}"), &[("v", &pdfcraft_engine::build_info::version())]));
+                 });
+             });
+             ui.add_space(6.0);
+-            ui.label(tl!("A clean-room, open-source PDF application written in Rust. MIT OR Apache-2.0."));
++            ui.label(tl!("Edit, sign, convert and organise PDFs in your browser. Your files never leave your device."));
++            ui.label(egui::RichText::new("Built on open-source software, MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and NOTICE).").color(t.text_muted).small());
+             ui.label(
+                 egui::RichText::new(
+                     "Rendering: hayro (bootstrap) · UI: egui · Icons: Lucide (ISC) · Fonts: Inter, JetBrains Mono, Dancing Script (OFL)",
+@@ -1578,15 +1579,6 @@ fn dialog_about(ui: &mut egui::Ui, req: &mut Pending) -> bool {
+                 .color(t.text_muted)
+                 .small(),
+             );
+-            ui.add_space(12.0);
+-            ui.horizontal(|ui| {
+-                ui.label(egui::RichText::new(tl!("Part of")).color(t.text_muted));
+-                widgets::artcraft_logo(ui, 16.0);
+-            });
+-            ui.add_space(6.0);
+-            if let Some(cmd) = widgets::community_links(ui) {
+-                req.link_command = Some(cmd);
+-            }
+         }
+     }
+     true
+diff --git a/crates/ui-egui/src/dialogs/preferences.rs b/crates/ui-egui/src/dialogs/preferences.rs
+index 9e3182e..dcdc09d 100644
+--- a/crates/ui-egui/src/dialogs/preferences.rs
++++ b/crates/ui-egui/src/dialogs/preferences.rs
+@@ -654,7 +654,7 @@ fn card_general(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens, ctx: &mut
+     ui.add_space(6.0);
+ 
+     #[cfg(not(target_arch = "wasm32"))]
+-    ctx.checkbox(ui, &mut app.reopen_last_session, tl!("Reopen the files that were open when PdfCraft last closed"), t);
++    ctx.checkbox(ui, &mut app.reopen_last_session, tl!("Reopen the files that were open when PDF Editor last closed"), t);
+     #[cfg(not(target_arch = "wasm32"))]
+     ctx.checkbox(ui, &mut app.restore_last_view, tl!("Restore the last view (page, zoom and page display) when a document is opened again"), t);
+     #[cfg(not(target_arch = "wasm32"))]
+diff --git a/crates/ui-egui/src/home.rs b/crates/ui-egui/src/home.rs
+index f935cba..ea4a0c9 100644
+--- a/crates/ui-egui/src/home.rs
++++ b/crates/ui-egui/src/home.rs
+@@ -71,46 +71,13 @@ fn tool_card(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens, g: &'static c
+     }
+ }
+ 
+-/// Draw the Home page with the welcome text, community card and recent documents.
++/// Draw the Home page: the hero, recommended and pinned tools, and recent documents.
+ pub fn show(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
+     let t = Tokens::get(ui.ctx());
+     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+         egui::Frame::NONE.inner_margin(egui::Margin { left: 36, right: 36, top: 28, bottom: 28 }).show(ui, |ui| {
+-            ui.label(egui::RichText::new(tl!("Welcome to PdfCraft")).font(theme::semibold(24.0)));
+-            ui.label(
+-                egui::RichText::new(tl!("An open-source PDF workbench — local, private, and scriptable."))
+-                    .color(t.text_muted)
+-                    .font(theme::regular(14.0)),
+-            );
+-            ui.add_space(14.0);
+-            if !app.community_card_closed {
+-                egui::Frame::NONE
+-                    .fill(t.card)
+-                    .stroke(Stroke::new(1.0, t.border))
+-                    .corner_radius(CornerRadius::same(12))
+-                    .inner_margin(egui::Margin::same(14))
+-                    .show(ui, |ui| {
+-                        ui.set_width(ui.available_width());
+-                        ui.horizontal(|ui| {
+-                            widgets::artcraft_mark(ui, 28.0);
+-                            ui.vertical(|ui| {
+-                                ui.label(egui::RichText::new(tl!("Join the ArtCraft community")).font(theme::semibold(15.0)));
+-                                ui.label(egui::RichText::new(tl!("Get help, share feedback and follow development on Discord.")).color(t.text_muted));
+-                            });
+-                            // Closed for this run only: the card is back on the next launch.
+-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+-                                if icons::button(ui, "x", 24.0, false, tl!("Close")).clicked() {
+-                                    app.community_card_closed = true;
+-                                }
+-                            });
+-                        });
+-                        ui.add_space(8.0);
+-                        if let Some(cmd) = widgets::community_links(ui) {
+-                            app.execute(cmd);
+-                        }
+-                    });
+-                ui.add_space(22.0);
+-            }
++            hero(app, ui, &t);
++            ui.add_space(22.0);
+ 
+             egui::Frame::NONE
+                 .fill(t.card)
+@@ -202,7 +169,7 @@ pub fn show(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
+                 });
+                 ui.add_space(8.0);
+                 if app.recent.is_empty() {
+-                    ui.label(egui::RichText::new(tl!("Files you open in PdfCraft appear here. Drop a PDF anywhere to open it.")).color(t.text_muted));
++                    ui.label(egui::RichText::new(tl!("Files you open in PDF Editor appear here. Drop a PDF anywhere to open it.")).color(t.text_muted));
+                 }
+             }
+             let mut open = None;
+@@ -269,7 +236,7 @@ pub fn show(app: &mut PdfCraftApp, ui: &mut egui::Ui) {
+             ui.add_space(20.0);
+             widgets::section_title(ui, tl!("Privacy"));
+             ui.label(
+-                egui::RichText::new(tl!("PdfCraft works offline. No telemetry, no account, and no cloud processing unless you add a provider."))
++                egui::RichText::new(tl!("PDF Editor works offline. No telemetry, no account, and no cloud processing unless you add a provider."))
+                     .color(t.text_muted),
+             );
+         });
+@@ -356,3 +323,69 @@ mod tests {
+         output.drop_without_applying_deltas();
+     }
+ }
++
++/// The top of Home: a soft violet banner with the app's promise and one clear action.
++fn hero(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens) {
++    let dark = t.dark();
++    let width = ui.available_width();
++    let height = 196.0;
++    let (rect, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
++    let radius = CornerRadius::same(20);
++    let painter = ui.painter_at(rect);
++    let base = if dark { egui::Color32::from_rgb(0x17, 0x15, 0x26) } else { egui::Color32::from_rgb(0xF4, 0xF1, 0xFF) };
++    painter.rect(rect, radius, base, Stroke::new(1.0, t.border), egui::StrokeKind::Inside);
++    // Two blurred glows, kept clear of the corners so they stay inside the rounding.
++    let glow = |c: egui::Pos2, r: f32, rgb: (u8, u8, u8), alpha: u8| {
++        for i in 0..14u8 {
++            let k = 1.0 - f32::from(i) / 14.0;
++            let a = (f32::from(alpha) * (1.0 - k) * 0.22).round().clamp(0.0, 255.0) as u8;
++            painter.circle_filled(c, r * k, egui::Color32::from_rgba_unmultiplied(rgb.0, rgb.1, rgb.2, a));
++        }
++    };
++    let h = rect.height();
++    glow(egui::pos2(rect.right() - h * 1.1, rect.center().y), h * 0.9, (0x8B, 0x6C, 0xFF), if dark { 120 } else { 90 });
++    glow(egui::pos2(rect.right() - h * 0.45, rect.top() + h * 0.62), h * 0.55, (0x2E, 0xC5, 0xF0), if dark { 70 } else { 55 });
++
++    let left = rect.left() + 32.0;
++    let mut y = rect.top() + 30.0;
++    let chip = tl!("Private · runs in your browser");
++    let chip_font = theme::medium(12.0);
++    let chip_w = ui.fonts_mut(|f| f.layout_no_wrap(chip.to_string(), chip_font.clone(), t.text).size().x) + 34.0;
++    let chip_rect = Rect::from_min_size(egui::pos2(left, y), vec2(chip_w, 24.0));
++    painter.rect_filled(chip_rect, CornerRadius::same(12), t.accent_soft);
++    icons::paint(ui, Rect::from_center_size(egui::pos2(chip_rect.left() + 14.0, chip_rect.center().y), vec2(14.0, 14.0)), "lock", 12.0, t.accent_text);
++    painter.text(egui::pos2(chip_rect.left() + 24.0, chip_rect.center().y), Align2::LEFT_CENTER, chip, chip_font, t.accent_text);
++    y += 38.0;
++    painter.text(egui::pos2(left, y), Align2::LEFT_TOP, tl!("Everything for your PDFs."), theme::semibold(30.0), t.text);
++    y += 44.0;
++    painter.text(
++        egui::pos2(left, y),
++        Align2::LEFT_TOP,
++        tl!("Edit, sign, combine and convert — fast, and your files never leave your device."),
++        theme::regular(14.5),
++        t.text_muted,
++    );
++    y += 34.0;
++
++    let label = tl!("Open a PDF");
++    let font = theme::semibold(14.0);
++    let text_w = ui.fonts_mut(|f| f.layout_no_wrap(label.to_string(), font.clone(), egui::Color32::WHITE).size().x);
++    let button = Rect::from_min_size(egui::pos2(left, y), vec2(text_w + 58.0, 38.0));
++    let resp = ui.interact(button, ui.id().with("hero_open"), Sense::click());
++    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
++    let fill = if resp.is_pointer_button_down_on() {
++        t.accent.gamma_multiply(0.85)
++    } else if resp.hovered() {
++        t.accent.gamma_multiply(1.12)
++    } else {
++        t.accent
++    };
++    ui.painter().rect_filled(button, CornerRadius::same(19), fill);
++    icons::paint(ui, Rect::from_center_size(egui::pos2(button.left() + 22.0, button.center().y), vec2(16.0, 16.0)), "folder-open", 16.0, egui::Color32::WHITE);
++    ui.painter().text(egui::pos2(button.left() + 38.0, button.center().y), Align2::LEFT_CENTER, label, font, egui::Color32::WHITE);
++    let hint = tl!("or drop a file anywhere");
++    ui.painter().text(egui::pos2(button.right() + 14.0, button.center().y), Align2::LEFT_CENTER, hint, theme::regular(13.0), t.text_faint);
++    if theme::hand(resp).clicked() {
++        app.open_dialog();
++    }
++}
+diff --git a/crates/ui-egui/src/menus.rs b/crates/ui-egui/src/menus.rs
+index 49f2aeb..e7abf0f 100644
+--- a/crates/ui-egui/src/menus.rs
++++ b/crates/ui-egui/src/menus.rs
+@@ -21,7 +21,7 @@ use crate::{PdfCraftApp, RightPanel};
+ pub(super) mod tab_context;
+ 
+ /// The app's name in the menus the layouts write (About, Hide, Quit).
+-pub(crate) const APP_NAME: &str = "PdfCraft";
++pub(crate) const APP_NAME: &str = "PDF Editor";
+ 
+ /// The top bar's width after the menus: the mode tabs, the search box and the buttons.
+ const ROW_AFTER_MENUS: f32 = 720.0;
+@@ -224,7 +224,7 @@ const SIGN: &[&str] = &[
+ ];
+ const WINDOW: &[&str] = &["view.next_tab", "view.previous_tab"];
+ const HELP: &[&str] =
+-    &["help.shortcuts", SEP, "help.app_page", "help.github", "help.website", "help.discord", SEP, "help.check_updates", SEP, "help.about"];
++    &["help.shortcuts", SEP, "help.about"];
+ 
+ /// A registry shortcut as a craft-keymap chord: `command` is ⌘ (Ctrl elsewhere) and `mac_ctrl`
+ /// the Control key on macOS. `None` for a key craft-keymap doesn't name.
+diff --git a/crates/ui-egui/src/platform/portable.rs b/crates/ui-egui/src/platform/portable.rs
+index fefa268..c70f150 100644
+--- a/crates/ui-egui/src/platform/portable.rs
++++ b/crates/ui-egui/src/platform/portable.rs
+@@ -132,7 +132,7 @@ mod tests {
+     #[test]
+     fn an_existing_data_folder_is_reused() {
+         let exe = temp("reuse");
+-        std::fs::write(exe.join("portable.txt"), b"PdfCraft portable mode").unwrap();
++        std::fs::write(exe.join("portable.txt"), b"PDF Editor portable mode").unwrap();
+         std::fs::create_dir_all(exe.join(DATA_DIR)).unwrap();
+         std::fs::write(exe.join(DATA_DIR).join("app.ron"), b"()").unwrap();
+         assert_eq!(resolve(Some(&exe)).dir, Some(exe.join(DATA_DIR)));
+diff --git a/crates/ui-egui/src/theme.rs b/crates/ui-egui/src/theme.rs
+index c3ce3e0..d3400d3 100644
+--- a/crates/ui-egui/src/theme.rs
++++ b/crates/ui-egui/src/theme.rs
+@@ -73,51 +73,51 @@ impl Tokens {
+         match kind {
+             ThemeKind::Light => Self {
+                 kind,
+-                titlebar: Color32::from_rgb(0xE9, 0xE9, 0xEB),
++                titlebar: Color32::from_rgb(0xEE, 0xED, 0xF4),
+                 chrome: Color32::from_rgb(0xFF, 0xFF, 0xFF),
+                 panel: Color32::from_rgb(0xFF, 0xFF, 0xFF),
+-                pasteboard: Color32::from_rgb(0xF1, 0xF1, 0xF3),
++                pasteboard: Color32::from_rgb(0xF5, 0xF4, 0xF9),
+                 card: Color32::from_rgb(0xFF, 0xFF, 0xFF),
+-                border: Color32::from_rgb(0xDA, 0xDA, 0xDE),
+-                divider: Color32::from_rgb(0xE8, 0xE8, 0xEB),
+-                text: Color32::from_rgb(0x22, 0x22, 0x26),
+-                text_muted: Color32::from_rgb(0x5E, 0x5E, 0x66),
+-                text_faint: Color32::from_rgb(0x6B, 0x6B, 0x73),
+-                icon: Color32::from_rgb(0x44, 0x44, 0x4B),
+-                hover: Color32::from_rgb(0xF0, 0xF0, 0xF3),
+-                pressed: Color32::from_rgb(0xE4, 0xE4, 0xE9),
+-                selected: Color32::from_rgb(0xE6, 0xEE, 0xFD),
+-                accent: Color32::from_rgb(0x1B, 0x63, 0xE0),
+-                accent_text: Color32::from_rgb(0x17, 0x55, 0xC4),
+-                accent_soft: Color32::from_rgb(0xE3, 0xEC, 0xFD),
++                border: Color32::from_rgb(0xE3, 0xE1, 0xEC),
++                divider: Color32::from_rgb(0xEE, 0xEC, 0xF4),
++                text: Color32::from_rgb(0x17, 0x16, 0x1F),
++                text_muted: Color32::from_rgb(0x56, 0x55, 0x66),
++                text_faint: Color32::from_rgb(0x65, 0x64, 0x75),
++                icon: Color32::from_rgb(0x3B, 0x3A, 0x4A),
++                hover: Color32::from_rgb(0xF2, 0xF0, 0xFA),
++                pressed: Color32::from_rgb(0xE8, 0xE5, 0xF5),
++                selected: Color32::from_rgb(0xEC, 0xE7, 0xFF),
++                accent: Color32::from_rgb(0x6E, 0x4B, 0xF5),
++                accent_text: Color32::from_rgb(0x58, 0x36, 0xDE),
++                accent_soft: Color32::from_rgb(0xEE, 0xE9, 0xFF),
+                 field: Color32::from_rgb(0xFF, 0xFF, 0xFF),
+-                badge_new: Color32::from_rgb(0x1B, 0x63, 0xE0),
+-                page_shadow: Color32::from_black_alpha(34),
+-                radius: 6,
++                badge_new: Color32::from_rgb(0x6E, 0x4B, 0xF5),
++                page_shadow: Color32::from_black_alpha(30),
++                radius: 10,
+             },
+             ThemeKind::Dark => Self {
+                 kind,
+-                titlebar: Color32::from_rgb(0x1B, 0x1B, 0x1E),
+-                chrome: Color32::from_rgb(0x26, 0x26, 0x2A),
+-                panel: Color32::from_rgb(0x26, 0x26, 0x2A),
+-                pasteboard: Color32::from_rgb(0x19, 0x19, 0x1C),
+-                card: Color32::from_rgb(0x2E, 0x2E, 0x33),
+-                border: Color32::from_rgb(0x3C, 0x3C, 0x43),
+-                divider: Color32::from_rgb(0x33, 0x33, 0x39),
+-                text: Color32::from_rgb(0xEC, 0xEC, 0xEF),
+-                text_muted: Color32::from_rgb(0xAE, 0xAE, 0xB6),
+-                text_faint: Color32::from_rgb(0x97, 0x97, 0x9E),
+-                icon: Color32::from_rgb(0xD4, 0xD4, 0xDA),
+-                hover: Color32::from_rgb(0x34, 0x34, 0x3A),
+-                pressed: Color32::from_rgb(0x3E, 0x3E, 0x45),
+-                selected: Color32::from_rgb(0x23, 0x3A, 0x63),
+-                accent: Color32::from_rgb(0x4B, 0x8B, 0xF5),
+-                accent_text: Color32::from_rgb(0x8C, 0xB6, 0xFA),
+-                accent_soft: Color32::from_rgb(0x24, 0x36, 0x57),
+-                field: Color32::from_rgb(0x1E, 0x1E, 0x22),
+-                badge_new: Color32::from_rgb(0x3D, 0x7D, 0xEE),
+-                page_shadow: Color32::from_black_alpha(120),
+-                radius: 6,
++                titlebar: Color32::from_rgb(0x0E, 0x0E, 0x13),
++                chrome: Color32::from_rgb(0x15, 0x15, 0x1C),
++                panel: Color32::from_rgb(0x15, 0x15, 0x1C),
++                pasteboard: Color32::from_rgb(0x0B, 0x0B, 0x10),
++                card: Color32::from_rgb(0x1C, 0x1C, 0x25),
++                border: Color32::from_rgb(0x2A, 0x2A, 0x36),
++                divider: Color32::from_rgb(0x22, 0x22, 0x2C),
++                text: Color32::from_rgb(0xF3, 0xF2, 0xF8),
++                text_muted: Color32::from_rgb(0xA6, 0xA5, 0xB6),
++                text_faint: Color32::from_rgb(0x90, 0x8F, 0xA1),
++                icon: Color32::from_rgb(0xDA, 0xD9, 0xE6),
++                hover: Color32::from_rgb(0x22, 0x22, 0x2D),
++                pressed: Color32::from_rgb(0x2C, 0x2C, 0x39),
++                selected: Color32::from_rgb(0x2D, 0x25, 0x55),
++                accent: Color32::from_rgb(0x6F, 0x52, 0xF2),
++                accent_text: Color32::from_rgb(0xB8, 0xA7, 0xFF),
++                accent_soft: Color32::from_rgb(0x2A, 0x23, 0x4D),
++                field: Color32::from_rgb(0x10, 0x10, 0x16),
++                badge_new: Color32::from_rgb(0x6F, 0x52, 0xF2),
++                page_shadow: Color32::from_black_alpha(140),
++                radius: 10,
+             },
+         }
+     }
+diff --git a/crates/ui-egui/src/tools/content_ui.rs b/crates/ui-egui/src/tools/content_ui.rs
+index 5b5154f..ec003aa 100644
+--- a/crates/ui-egui/src/tools/content_ui.rs
++++ b/crates/ui-egui/src/tools/content_ui.rs
+@@ -51,10 +51,10 @@ pub(crate) fn undrawable_message(c: char) -> String {
+ pub(crate) fn undrawn_message(n: &pdfcraft_engine::TextNotice) -> String {
+     let template = if n.redrawn_elsewhere {
+         tl!(
+-            "This field's font can't draw “{c}” ({code}), so PdfCraft shows ? in its place. The value is saved, and other PDF viewers redraw the field from it."
++            "This field's font can't draw “{c}” ({code}), so PDF Editor shows ? in its place. The value is saved, and other PDF viewers redraw the field from it."
+         )
+     } else {
+-        tl!("The fonts PdfCraft writes with can't draw “{c}” ({code}), so it shows as ? in every PDF viewer. The text is saved.")
++        tl!("The fonts PDF Editor writes with can't draw “{c}” ({code}), so it shows as ? in every PDF viewer. The text is saved.")
+     };
+     crate::i18n::fmt(template, &[("c", &n.ch.to_string()), ("code", &format!("U+{:04X}", u32::from(n.ch)))])
+ }
+diff --git a/crates/ui-egui/src/tools/fill_sign/scan.rs b/crates/ui-egui/src/tools/fill_sign/scan.rs
+index 6179a9a..61369fa 100644
+--- a/crates/ui-egui/src/tools/fill_sign/scan.rs
++++ b/crates/ui-egui/src/tools/fill_sign/scan.rs
+@@ -210,7 +210,7 @@ pub(super) fn scan_tab(
+ ) -> bool {
+     ui.label(
+         egui::RichText::new(tl!(
+-            "Sign a sheet of white paper and take a photo of it in bright, even light (use the flash). Choose the photo or drop it here: PdfCraft finds the signature and removes the paper."
++            "Sign a sheet of white paper and take a photo of it in bright, even light (use the flash). Choose the photo or drop it here: PDF Editor finds the signature and removes the paper."
+         ))
+         .color(t.text_muted),
+     );
+diff --git a/crates/ui-egui/src/tools/sign_ui/dialog.rs b/crates/ui-egui/src/tools/sign_ui/dialog.rs
+index e627f9a..92d9540 100644
+--- a/crates/ui-egui/src/tools/sign_ui/dialog.rs
++++ b/crates/ui-egui/src/tools/sign_ui/dialog.rs
+@@ -438,9 +438,9 @@ fn sign_as(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens) -> bool {
+             ui.label("");
+             ui.label(
+                 egui::RichText::new(if entry.path.starts_with("windows:") {
+-                    tl!("The key is in the Windows certificate store, which may ask to allow PdfCraft to use it.")
++                    tl!("The key is in the Windows certificate store, which may ask to allow PDF Editor to use it.")
+                 } else {
+-                    tl!("The key is in the macOS Keychain, which may ask to allow PdfCraft to use it.")
++                    tl!("The key is in the macOS Keychain, which may ask to allow PDF Editor to use it.")
+                 })
+                 .small()
+                 .color(t.text_muted),
+diff --git a/crates/ui-egui/src/widgets.rs b/crates/ui-egui/src/widgets.rs
+index c4ca254..67c99fa 100644
+--- a/crates/ui-egui/src/widgets.rs
++++ b/crates/ui-egui/src/widgets.rs
+@@ -602,24 +602,17 @@ pub fn progress_notice(app: &PdfCraftApp, ctx: &egui::Context) -> bool {
+     cancel
+ }
+ 
+-/// The ArtCraft wordmark (Storyteller's brand, docs/brand/; not open source), sized to `height`.
+-pub fn artcraft_logo(ui: &mut egui::Ui, height: f32) -> Response {
+-    let dark = ui.visuals().dark_mode;
+-    let (uri, bytes): (&str, &'static [u8]) = if dark {
+-        ("bytes://artcraft-logo-white.svg", include_bytes!("../../../docs/brand/artcraft-logo-white.svg"))
+-    } else {
+-        ("bytes://artcraft-logo.svg", include_bytes!("../../../docs/brand/artcraft-logo.svg"))
+-    };
+-    ui.add(egui::Image::from_bytes(uri, bytes).max_height(height).alt_text("ArtCraft"))
+-}
+-
+-/// The ArtCraft mark (brand blue, works on light and dark), `size` points square.
+-pub fn artcraft_mark(ui: &mut egui::Ui, size: f32) -> Response {
+-    ui.add(
+-        egui::Image::from_bytes("bytes://artcraft-mark.svg", include_bytes!("../../../docs/brand/artcraft-mark.svg"))
+-            .fit_to_exact_size(vec2(size, size))
+-            .alt_text("ArtCraft"),
+-    )
++/// The app mark: a rounded violet tile with a document glyph, `size` points square.
++pub fn app_mark(ui: &mut egui::Ui, size: f32) -> Response {
++    let (rect, resp) = ui.allocate_exact_size(vec2(size, size), Sense::hover());
++    let r = CornerRadius::same((size * 0.28).clamp(0.0, 255.0) as u8);
++    let painter = ui.painter();
++    painter.rect_filled(rect, r, Color32::from_rgb(0x6E, 0x4B, 0xF5));
++    // A lighter top half for depth.
++    let top = Rect::from_min_max(rect.min, egui::pos2(rect.max.x, rect.center().y));
++    painter.rect_filled(top, CornerRadius { nw: r.nw, ne: r.ne, sw: 0, se: 0 }, Color32::from_rgba_unmultiplied(0xFF, 0xFF, 0xFF, 22));
++    crate::icons::paint(ui, rect.shrink(size * 0.22), "file-text", size * 0.56, Color32::WHITE);
++    resp
+ }
+ 
+ /// Buttons for every community link (`pdfcraft_engine::links`), Discord first and prominent.
+diff --git a/crates/ui-egui/src/workflows/js_ui.rs b/crates/ui-egui/src/workflows/js_ui.rs
+index ccfc241..f3885b7 100644
+--- a/crates/ui-egui/src/workflows/js_ui.rs
++++ b/crates/ui-egui/src/workflows/js_ui.rs
+@@ -78,7 +78,7 @@ impl PdfCraftApp {
+                 }
+                 Request::LaunchUrl(u) => self.request_document_url(&u, crate::LinkOrigin::Script),
+                 Request::Submit(u) => self.notify_fmt(
+-                    "The form asks to be submitted to {u}; PdfCraft doesn't send form data. Save the document to keep your entries.",
++                    "The form asks to be submitted to {u}; PDF Editor doesn't send form data. Save the document to keep your entries.",
+                     &[("u", &u)],
+                 ),
+                 Request::SaveAs => self.run_command("file.save_as"),
+diff --git a/crates/ui-egui/src/workflows/ocr_ui.rs b/crates/ui-egui/src/workflows/ocr_ui.rs
+index 04e257d..6c07784 100644
+--- a/crates/ui-egui/src/workflows/ocr_ui.rs
++++ b/crates/ui-egui/src/workflows/ocr_ui.rs
+@@ -148,7 +148,7 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens) -> (boo
+     });
+     if !available {
+         ui.label(
+-            egui::RichText::new(tl!("Text recognition isn't installed: its model files are missing. Reinstall PdfCraft, or set PDFCRAFT_MODELS to the folder that holds them."))
++            egui::RichText::new(tl!("Text recognition isn't installed: its model files are missing. Reinstall PDF Editor, or set PDFCRAFT_MODELS to the folder that holds them."))
+                 .small()
+                 .color(t.text_muted),
+         );
+diff --git a/crates/ui-egui/src/workflows/web_print.rs b/crates/ui-egui/src/workflows/web_print.rs
+index 6af878d..86c6303 100644
+--- a/crates/ui-egui/src/workflows/web_print.rs
++++ b/crates/ui-egui/src/workflows/web_print.rs
+@@ -128,7 +128,7 @@ pub(crate) fn print_document_html(sheets: &[(f64, f64)], urls: &[String]) -> Str
+             html_sheets.push_str(&format!("<div class=\"s{k}\"><img alt=\"\" style=\"width:{w};height:{h}\" src=\"{src}\"></div>"));
+         }
+     }
+-    format!("<!doctype html><html><head><meta charset=\"utf-8\"><title>PdfCraft</title><style>{css}</style></head><body>{html_sheets}</body></html>")
++    format!("<!doctype html><html><head><meta charset=\"utf-8\"><title>PDF Editor</title><style>{css}</style></head><body>{html_sheets}</body></html>")
+ }
+ 
+ /// A browser print being prepared: the print-ready PDF's sheets drawn one [`WebPrintJob::step`]
