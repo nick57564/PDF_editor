@@ -42,10 +42,10 @@ index 46b3a25..dfb7baa 100644
    </body>
  </html>
 diff --git a/crates/edit/src/tests.rs b/crates/edit/src/tests.rs
-index cbea5c2..ad47f80 100644
+index cbea5c2..07b5132 100644
 --- a/crates/edit/src/tests.rs
 +++ b/crates/edit/src/tests.rs
-@@ -10588,3 +10588,39 @@ fn review_inside_scope_group_move_matches_direct_transform_under_outer_scale() {
+@@ -10588,3 +10588,44 @@ fn review_inside_scope_group_move_matches_direct_transform_under_outer_scale() {
          }
      }
  }
@@ -63,6 +63,11 @@ index cbea5c2..ad47f80 100644
 +        font.set(b"Subtype".to_vec(), Object::name("Type1"));
 +        font.set(b"BaseFont".to_vec(), Object::name(base));
 +        font.set(b"Encoding".to_vec(), Object::name("WinAnsiEncoding"));
++        // Widths for every printable ASCII code, as real OCR layers have: the font can encode
++        // the new text, so only the glyphless check keeps it from being reused.
++        font.set(b"FirstChar".to_vec(), Object::Int(32));
++        font.set(b"LastChar".to_vec(), Object::Int(126));
++        font.set(b"Widths".to_vec(), Object::Array(vec![Object::Int(500); 95]));
 +        let mut fonts = Dict::new();
 +        fonts.set(b"F1".to_vec(), Object::Dict(font));
 +        res.set(b"Font".to_vec(), Object::Dict(fonts));
