@@ -3,11 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>PdfCraft</title>
+    <title>Plume — PDF editor</title>
+    <meta name="description" content="Edit, sign, combine and convert PDFs in your browser. Your files never leave your device." />
+    <meta name="theme-color" content="#f5f4f9" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b0b10" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%236E4BF5'/%3E%3Cpath d='M32 12 46 32 32 52 18 32Z' fill='none' stroke='white' stroke-width='4' stroke-linejoin='round'/%3E%3Cpath d='M32 12v22' stroke='white' stroke-width='4' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='36' r='3.5' fill='white'/%3E%3C/svg%3E" />
     
 <script type="module">
-import init, * as bindings from './pdfcraft-web-87352eb54998b79.js';
-const wasm = await init({ module_or_path: './pdfcraft-web-87352eb54998b79_bg.wasm' });
+import init, * as bindings from './pdfcraft-web-b2e4f7d46b0b4cc5.js';
+const wasm = await init({ module_or_path: './pdfcraft-web-4a30050fea734f44_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -17,12 +21,27 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
 
 </script>
     <style>
-      html, body { margin: 0; height: 100%; overflow: hidden; background: #f1f1f3; }
-      canvas { width: 100%; height: 100%; display: block; outline: none; }
-      @media (prefers-color-scheme: dark) { html, body { background: #19191c; } }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #f5f4f9; color: #565566;
+        font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+      canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+      .boot { position: fixed; inset: 0; display: grid; place-content: center; justify-items: center; gap: 18px; }
+      .mark { width: 56px; height: 56px; border-radius: 16px; background: #6e4bf5; box-shadow: 0 12px 40px rgba(110, 75, 245, .35);
+        animation: pulse 1.6s ease-in-out infinite; }
+      .bar { width: 160px; height: 4px; border-radius: 4px; background: rgba(110, 75, 245, .15); overflow: hidden; }
+      .bar::after { content: ""; display: block; width: 40%; height: 100%; border-radius: 4px; background: #6e4bf5;
+        animation: slide 1.2s ease-in-out infinite; }
+      @keyframes pulse { 50% { transform: scale(.92); opacity: .8; } }
+      @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+      @media (prefers-color-scheme: dark) { html, body { background: #0b0b10; color: #a6a5b6; } }
+      @media (prefers-reduced-motion: reduce) { .mark, .bar::after { animation: none; } }
     </style>
-  <link rel="modulepreload" href="./pdfcraft-web-87352eb54998b79.js" crossorigin="anonymous" integrity="sha384-Z++CJfxVybE/NeDpzebUrpTXzicXGHBYFKORXnixtzljJfXbZllQRX1+/W9ImxqU"><link rel="modulepreload" href="./snippets/eframe-d31a8450ea12dfc1/inline0.js" crossorigin="anonymous" integrity="sha384-uPZQ72BwgZ4v7Km6+UIFbkDDlt7ShGEsAVEHVN/+wZSGFhItJZB83iKMFQXauTSs"><link rel="preload" href="./pdfcraft-web-87352eb54998b79_bg.wasm" crossorigin="anonymous" integrity="sha384-HLsemB60WEJcmhV9G+GRiMLIewMIkQGmugiKNBoY1hWWe4p1O6i1sNE+oI0cqzSd" as="fetch" type="application/wasm"></head>
+  <link rel="modulepreload" href="./pdfcraft-web-b2e4f7d46b0b4cc5.js" crossorigin="anonymous" integrity="sha384-DrF6sCI1ksak1KK0VOy75fPRmMRHWGHyVSf1Y+CGHY0mNCcCZW5EtIxPDGm2EvV7"><link rel="modulepreload" href="./snippets/eframe-d31a8450ea12dfc1/inline0.js" crossorigin="anonymous" integrity="sha384-uPZQ72BwgZ4v7Km6+UIFbkDDlt7ShGEsAVEHVN/+wZSGFhItJZB83iKMFQXauTSs"><link rel="preload" href="./pdfcraft-web-4a30050fea734f44_bg.wasm" crossorigin="anonymous" integrity="sha384-jbGWPUOWyDHUi3HEwqOXlUkr94GoeKVURKAHxM5frubiof6PdY13gILlUB58B/gh" as="fetch" type="application/wasm"></head>
   <body>
+    <div class="boot" aria-live="polite">
+      <div class="mark" aria-hidden="true"></div>
+      <div>Loading Plume…</div>
+      <div class="bar" aria-hidden="true"></div>
+    </div>
     <canvas id="pdfcraft"></canvas>
   </body>
 </html>
