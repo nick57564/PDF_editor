@@ -5,7 +5,7 @@ a PDF workbench that runs entirely in the browser via WebAssembly. Documents nev
 user's machine; there is no server-side code.
 
 - `public/` is the unmodified `pdfcraft-web-0.18.2.zip` release (licenses in `public/LICENSE-*` and `public/NOTICE`).
-- `vercel.json` serves it as a static site (no build step) with the headers from `HOSTING.md`.
+- `vercel.json` serves it as a static site with no build step; Vercel sets the wasm MIME type and compression itself.
 
 ## Updating to a newer PdfCraft
 
