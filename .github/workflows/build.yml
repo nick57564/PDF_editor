@@ -1,6 +1,7 @@
-# Builds the PDF Editor web app: the upstream PdfCraft release named in UPSTREAM_VERSION, with
-# patches/*.patch applied, compiled to WebAssembly and committed to public/ (Vercel serves that).
-name: Build PDF Editor
+# Builds the Plume web app: the upstream PdfCraft release named in UPSTREAM_VERSION, with
+# patches/*.patch applied, compiled to WebAssembly and published to the `preview` branch (tested,
+# then fast-forwarded to main, which Vercel deploys).
+name: Build Plume
 
 on:
   push:
@@ -87,7 +88,9 @@ jobs:
         working-directory: upstream/apps/pdfcraft-web
         run: trunk build --release
 
-      - name: Publish to public/
+      # The build goes to the `preview` branch, not to main: it is tested there first, then
+      # fast-forwarded to main (`git push origin origin/preview:main`), which deploys it.
+      - name: Publish to the preview branch
         run: |
           rm -rf public && mkdir public
           cp -R upstream/dist/web/. public/
@@ -95,7 +98,7 @@ jobs:
           ls -la public
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B preview
           git add -A public
-          if git diff --cached --quiet; then echo "public/ is unchanged"; exit 0; fi
-          git commit -m "Build PDF Editor web app (PdfCraft $(tr -d '[:space:]' < UPSTREAM_VERSION) + patches)"
-          git push
+          git commit -m "Build Plume web app (PdfCraft $(tr -d '[:space:]' < UPSTREAM_VERSION) + patches)"
+          git push -f origin preview
