@@ -1,0 +1,9 @@
+Text recognition models used by Plume's Scan & OCR
+
+text-detection.onnx, text-recognition.onnx
+Author: Robert Knight (ocrs-models), trained on HierText
+Source: https://github.com/robertknight/ocrs (model card: https://huggingface.co/robertknight/ocrs)
+Downloaded from: https://ocrs-models.s3-accelerate.amazonaws.com/
+Licence: Creative Commons Attribution-ShareAlike 4.0 (CC BY-SA 4.0)
+         https://creativecommons.org/licenses/by-sa/4.0/
+The files are distributed unmodified.

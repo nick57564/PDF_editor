@@ -1,3 +1,15 @@
+diff --git a/apps/pdfcraft-web/Cargo.toml b/apps/pdfcraft-web/Cargo.toml
+index ad8243d..2aade5f 100644
+--- a/apps/pdfcraft-web/Cargo.toml
++++ b/apps/pdfcraft-web/Cargo.toml
+@@ -11,6 +11,7 @@ workspace = true
+ 
+ [dependencies]
+ pdfcraft-ui-egui = { workspace = true }
++pdfcraft-engine = { workspace = true }
+ eframe = { workspace = true, features = ["default_fonts", "glow", "persistence", "accesskit"] }
+ egui = { workspace = true, features = ["default_fonts", "monochrome_emoji_fonts"] }
+ 
 diff --git a/apps/pdfcraft-web/index.html b/apps/pdfcraft-web/index.html
 index 46b3a25..0235141 100644
 --- a/apps/pdfcraft-web/index.html
@@ -41,6 +53,43 @@ index 46b3a25..0235141 100644
      <canvas id="pdfcraft"></canvas>
    </body>
  </html>
+diff --git a/apps/pdfcraft-web/src/main.rs b/apps/pdfcraft-web/src/main.rs
+index 73d14f4..7fb5102 100644
+--- a/apps/pdfcraft-web/src/main.rs
++++ b/apps/pdfcraft-web/src/main.rs
+@@ -8,6 +8,8 @@ fn main() {
+     use eframe::wasm_bindgen::JsCast;
+     use pdfcraft_ui_egui::PdfCraftApp;
+ 
++    // Text recognition: the models are fetched from this site the first time they are wanted.
++    pdfcraft_engine::ocr::set_model_requester(fetch_ocr_models);
+     let options = eframe::WebOptions { renderer: eframe::Renderer::Glow, ..Default::default() };
+     wasm_bindgen_futures::spawn_local(async move {
+         let Some(canvas) = web_sys::window()
+@@ -110,6 +112,23 @@ fn query_param(key: &str) -> Option<String> {
+     web_sys::UrlSearchParams::new_with_str(&search).ok()?.get(key)
+ }
+ 
++/// Fetch the OCR models served beside the app (`models/`, see the build) and hand them over.
++#[cfg(target_arch = "wasm32")]
++fn fetch_ocr_models() {
++    wasm_bindgen_futures::spawn_local(async {
++        let detection = fetch_bytes(&format!("models/{}", pdfcraft_engine::ocr::DETECTION_MODEL)).await;
++        let recognition = fetch_bytes(&format!("models/{}", pdfcraft_engine::ocr::RECOGNITION_MODEL)).await;
++        match (detection, recognition) {
++            (Ok(d), Ok(r)) => pdfcraft_engine::ocr::provide_models(d, r),
++            (d, r) => {
++                let e = d.err().or(r.err()).unwrap_or_default();
++                eframe::web_sys::console::error_1(&format!("Plume: could not fetch the text recognition models: {e}").into());
++                pdfcraft_engine::ocr::models_failed();
++            }
++        }
++    });
++}
++
+ #[cfg(target_arch = "wasm32")]
+ async fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
+     use eframe::wasm_bindgen::JsCast;
 diff --git a/crates/edit/src/tests.rs b/crates/edit/src/tests.rs
 index cbea5c2..b885313 100644
 --- a/crates/edit/src/tests.rs
@@ -153,6 +202,103 @@ index e1d54d5..b6d1dfe 100644
  
  pub fn for_command(id: &str) -> Option<&'static Link> {
      LINKS.iter().find(|l| l.command == id)
+diff --git a/crates/engine/src/ocr.rs b/crates/engine/src/ocr.rs
+index 6b9869c..762ae44 100644
+--- a/crates/engine/src/ocr.rs
++++ b/crates/engine/src/ocr.rs
+@@ -5,11 +5,12 @@
+ //! captures what it needs, [`OcrJob::run`] works anywhere (the UI runs it on a worker thread) and
+ //! [`Session::apply_ocr`] applies the result as one undoable step.
+ 
+-use std::sync::{Arc, Mutex};
++use std::sync::atomic::{AtomicBool, Ordering};
++use std::sync::{Arc, Mutex, OnceLock};
+ 
+ use pdfcraft_render::{PageInfo, PageRenderer, RenderConfig, RenderRequest, RequestKind};
+ 
+-pub use pdfcraft_ocr::{LANGUAGES, Models, Ocr, OcrError, PlacedWord};
++pub use pdfcraft_ocr::{DETECTION_MODEL, LANGUAGES, Models, Ocr, OcrError, PlacedWord, RECOGNITION_MODEL};
+ 
+ use crate::{DocId, Edit, EditError, Session};
+ 
+@@ -77,6 +78,19 @@ impl OcrPage {
+     }
+ }
+ 
++/// Model files handed over by a host that has none on disk (the web app fetches them from its
++/// own site): `(detection, recognition)`, taken when the recogniser is first loaded.
++static PROVIDED: Mutex<Option<(Vec<u8>, Vec<u8>)>> = Mutex::new(None);
++/// Set once [`provide_models`] has run: the recogniser can be loaded from memory.
++static PROVIDED_READY: AtomicBool = AtomicBool::new(false);
++/// How the host fetches the models on demand, registered at start-up ([`set_model_requester`]).
++static REQUESTER: OnceLock<fn()> = OnceLock::new();
++/// A fetch has been started (once per page load).
++static REQUESTED: AtomicBool = AtomicBool::new(false);
++/// The fetch failed. It is not retried by itself (the panel asking every frame would hammer the
++/// site); reloading the page starts afresh.
++static FAILED: AtomicBool = AtomicBool::new(false);
++
+ /// The recogniser, loaded once (it takes a moment) and shared.
+ pub fn engine() -> Result<Arc<Ocr>, String> {
+     static OCR: Mutex<Option<Arc<Ocr>>> = Mutex::new(None);
+@@ -84,14 +98,54 @@ pub fn engine() -> Result<Arc<Ocr>, String> {
+     if let Some(o) = slot.as_ref() {
+         return Ok(o.clone());
+     }
+-    let o = Arc::new(Ocr::find().map_err(|e| e.to_string())?);
++    let provided = if Models::find().is_none() { PROVIDED.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take() } else { None };
++    let o = match provided {
++        Some((detection, recognition)) => Arc::new(Ocr::from_bytes(detection, recognition).map_err(|e| e.to_string())?),
++        None => Arc::new(Ocr::find().map_err(|e| e.to_string())?),
++    };
+     *slot = Some(o.clone());
+     Ok(o)
+ }
+ 
+-/// Whether the recognition models are installed.
++/// Whether the recognition models are installed, or have been handed over by the host.
+ pub fn available() -> bool {
+-    Models::find().is_some()
++    PROVIDED_READY.load(Ordering::Acquire) || Models::find().is_some()
++}
++
++/// Hand over the two model files (ONNX or RTen) for a host with no model files on disk.
++pub fn provide_models(detection: Vec<u8>, recognition: Vec<u8>) {
++    *PROVIDED.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some((detection, recognition));
++    FAILED.store(false, Ordering::Release);
++    PROVIDED_READY.store(true, Ordering::Release);
++}
++
++/// Register how the host fetches the models when recognition is first wanted. The function
++/// starts the fetch and returns; it ends with [`provide_models`] or [`models_failed`].
++pub fn set_model_requester(fetch: fn()) {
++    let _ = REQUESTER.set(fetch);
++}
++
++/// Ask the host for the models if they are missing and it fetches them on demand. Returns
++/// whether a fetch is underway, so the caller can say so and wait.
++pub fn request_models() -> bool {
++    if available() {
++        return false;
++    }
++    let Some(fetch) = REQUESTER.get() else { return false };
++    if !REQUESTED.swap(true, Ordering::AcqRel) {
++        fetch();
++    }
++    !FAILED.load(Ordering::Acquire) && !available()
++}
++
++/// The host's fetch failed. It is not retried until the page is reloaded.
++pub fn models_failed() {
++    FAILED.store(true, Ordering::Release);
++}
++
++/// Whether the last fetch of the models failed.
++pub fn models_fetch_failed() -> bool {
++    FAILED.load(Ordering::Acquire)
+ }
+ 
+ /// Everything recognition needs from a document, detached from the session.
 diff --git a/crates/engine/src/xfa_form.rs b/crates/engine/src/xfa_form.rs
 index 5ceaba1..01da318 100644
 --- a/crates/engine/src/xfa_form.rs
@@ -166,6 +312,47 @@ index 5ceaba1..01da318 100644
          ));
      }
      Ok(())
+diff --git a/crates/ocr/src/lib.rs b/crates/ocr/src/lib.rs
+index 7f58270..e66d875 100644
+--- a/crates/ocr/src/lib.rs
++++ b/crates/ocr/src/lib.rs
+@@ -114,9 +114,20 @@ pub struct Ocr {
+ impl Ocr {
+     pub fn load(models: &Models) -> Result<Ocr, OcrError> {
+         let load = |p: &Path| rten::Model::load_file(p).map_err(|e| OcrError::Load(p.display().to_string(), e.to_string()));
++        Self::with_models(load(&models.detection)?, load(&models.recognition)?)
++    }
++
++    /// Load the two models from their file contents (ONNX or RTen, detected), for hosts with no
++    /// model files on disk: the web app fetches them from its own site.
++    pub fn from_bytes(detection: Vec<u8>, recognition: Vec<u8>) -> Result<Ocr, OcrError> {
++        let load = |name: &str, bytes: Vec<u8>| rten::Model::load(bytes).map_err(|e| OcrError::Load(name.to_owned(), e.to_string()));
++        Self::with_models(load(DETECTION_MODEL, detection)?, load(RECOGNITION_MODEL, recognition)?)
++    }
++
++    fn with_models(detection: rten::Model, recognition: rten::Model) -> Result<Ocr, OcrError> {
+         let params = ocrs::OcrEngineParams {
+-            detection_model: Some(load(&models.detection)?),
+-            recognition_model: Some(load(&models.recognition)?),
++            detection_model: Some(detection),
++            recognition_model: Some(recognition),
+             alphabet: Some(ALPHABET.into()),
+             ..Default::default()
+         };
+@@ -411,6 +422,13 @@ mod tests {
+         let _ = std::fs::remove_dir_all(&base);
+     }
+ 
++    /// Model bytes from the network are untrusted: garbage is an error, never a panic.
++    #[test]
++    fn models_from_bad_bytes_are_an_error() {
++        assert!(matches!(Ocr::from_bytes(Vec::new(), Vec::new()), Err(OcrError::Load(..))));
++        assert!(matches!(Ocr::from_bytes(b"not a model".to_vec(), vec![0; 64]), Err(OcrError::Load(..))));
++    }
++
+     /// The message tells end users what to do; release builds have no cargo.
+     #[test]
+     fn the_alphabet_is_the_trained_one() {
 diff --git a/crates/ui-egui/src/app.rs b/crates/ui-egui/src/app.rs
 index 43a1e5c..cee0776 100644
 --- a/crates/ui-egui/src/app.rs
@@ -665,6 +852,32 @@ index 49f2aeb..0d0e747 100644
  
  /// A registry shortcut as a craft-keymap chord: `command` is ⌘ (Ctrl elsewhere) and `mac_ctrl`
  /// the Control key on macOS. `None` for a key craft-keymap doesn't name.
+diff --git a/crates/ui-egui/src/panels/all_tools_ui.rs b/crates/ui-egui/src/panels/all_tools_ui.rs
+index 917bdb0..f69eab9 100644
+--- a/crates/ui-egui/src/panels/all_tools_ui.rs
++++ b/crates/ui-egui/src/panels/all_tools_ui.rs
+@@ -134,7 +134,7 @@ fn tile(ui: &mut egui::Ui, t: &Tokens, g: &ToolGroup, items: &[&'static str]) ->
+     let note = if items.is_empty() {
+         match g.availability {
+             Availability::Ready => String::new(),
+-            Availability::Planned(m) => format!("{} · {m}", tl!("Planned")),
++            Availability::Planned(_) => tl!("Soon").to_string(),
+             Availability::Provider => g.badge.map(|b| tl!(b).to_owned()).unwrap_or_default(),
+         }
+     } else {
+diff --git a/crates/ui-egui/src/panels/tools.rs b/crates/ui-egui/src/panels/tools.rs
+index fce62fb..0941b52 100644
+--- a/crates/ui-egui/src/panels/tools.rs
++++ b/crates/ui-egui/src/panels/tools.rs
+@@ -271,7 +271,7 @@ fn tool_detail(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens, g: &'static
+                 );
+                 let (chip, fill, cfg) = match item.availability {
+                     Availability::Ready => (tl!("Ready"), Color32::from_rgb(0xDD, 0xF3, 0xE4), Color32::from_rgb(0x1E, 0x7B, 0x43)),
+-                    Availability::Planned(m) => (m, t.pressed, t.text_muted),
++                    Availability::Planned(_) => (tl!("Soon"), t.pressed, t.text_muted),
+                     Availability::Provider => ("AI", t.pressed, t.text_muted),
+                 };
+                 let font = theme::semibold(9.5);
 diff --git a/crates/ui-egui/src/platform/portable.rs b/crates/ui-egui/src/platform/portable.rs
 index fefa268..aea4cd0 100644
 --- a/crates/ui-egui/src/platform/portable.rs
@@ -900,18 +1113,47 @@ index ccfc241..b918a99 100644
                  ),
                  Request::SaveAs => self.run_command("file.save_as"),
 diff --git a/crates/ui-egui/src/workflows/ocr_ui.rs b/crates/ui-egui/src/workflows/ocr_ui.rs
-index 04e257d..1019f5c 100644
+index 04e257d..e5a05a1 100644
 --- a/crates/ui-egui/src/workflows/ocr_ui.rs
 +++ b/crates/ui-egui/src/workflows/ocr_ui.rs
-@@ -148,7 +148,7 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens) -> (boo
+@@ -92,7 +92,12 @@ pub struct AutoOcr {
+ 
+ pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens) -> (bool, bool) {
+     let pages = app.active_ids().and_then(|(_, id)| app.session.get(id)).map_or(1, |d| d.info.pages.len().max(1));
++    // In the browser the models are fetched the first time recognition is wanted.
++    let downloading = pdfcraft_engine::ocr::request_models();
+     let available = pdfcraft_engine::ocr::available();
++    if downloading {
++        ui.ctx().request_repaint_after(std::time::Duration::from_millis(250));
++    }
+     let d = &mut app.ocr_draft;
+     d.to = d.to.clamp(1, pages);
+     d.from = d.from.clamp(1, d.to);
+@@ -147,11 +152,19 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens) -> (boo
+             .on_hover_text(tl!("Pictures on those pages are recognized too; words already in the page's text are not added again"));
      });
      if !available {
-         ui.label(
+-        ui.label(
 -            egui::RichText::new(tl!("Text recognition isn't installed: its model files are missing. Reinstall PdfCraft, or set PDFCRAFT_MODELS to the folder that holds them."))
-+            egui::RichText::new(tl!("Text recognition isn't installed: its model files are missing. Reinstall Plume, or set PDFCRAFT_MODELS to the folder that holds them."))
-                 .small()
-                 .color(t.text_muted),
-         );
+-                .small()
+-                .color(t.text_muted),
+-        );
++        let note = if downloading {
++            tl!("Downloading text recognition (about 12 MB, only the first time)…")
++        } else if pdfcraft_engine::ocr::models_fetch_failed() {
++            tl!("Text recognition could not be downloaded. Check your connection, then reload the page.")
++        } else {
++            tl!("Text recognition isn't installed: its model files are missing. Reinstall Plume, or set PDFCRAFT_MODELS to the folder that holds them.")
++        };
++        ui.horizontal(|ui| {
++            if downloading {
++                ui.add(egui::Spinner::new().size(12.0));
++            }
++            ui.label(egui::RichText::new(note).small().color(t.text_muted));
++        });
+         ui.add_space(6.0);
+     }
+     ui.add_space(6.0);
 diff --git a/crates/ui-egui/src/workflows/web_print.rs b/crates/ui-egui/src/workflows/web_print.rs
 index 6af878d..b3c27cc 100644
 --- a/crates/ui-egui/src/workflows/web_print.rs

@@ -32,6 +32,10 @@ under **Actions › Build PDF Editor › Run workflow**.
 - **No external links:** the Discord button, the community card, the Help-menu links to
   PdfCraft/ArtCraft/GitHub, "Check for updates" and the ArtCraft logo are removed; the app
   is called "Plume".
+- **OCR in the browser:** the upstream web build has no text recognition (its models are
+  looked for on disk). The models are now served from `public/models/` (CC BY-SA 4.0, see
+  `public/models/ATTRIBUTION.txt`) and fetched the first time Scan & OCR is opened (about
+  12 MB, cached by the browser). Milestone codes ("M10") on unfinished tools read "Soon".
 - **Design:** a refreshed light and dark theme (violet accent, deeper neutrals, rounder
   corners, pill tabs), a new Home with a hero, an "Open a PDF" action and a bento grid of
   tools, the Plume icon and a loading screen.

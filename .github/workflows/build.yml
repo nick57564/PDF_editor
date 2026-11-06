@@ -104,6 +104,14 @@ jobs:
         working-directory: upstream/apps/pdfcraft-web
         run: trunk build --release
 
+      - name: Fetch the OCR models (verified by SHA-256)
+        working-directory: upstream
+        run: |
+          set -o pipefail
+          cargo test -p pdfcraft-ocr --lib models_from_bad_bytes 2>&1 | tail -3
+          cargo xtask models
+          ls -la assets/models
+
       # The build goes to the `preview` branch, not to main: it is tested there first, then
       # fast-forwarded to main (`git push origin origin/preview:main`), which deploys it.
       - name: Publish to the preview branch
@@ -111,6 +119,11 @@ jobs:
           rm -rf public && mkdir public
           cp -R upstream/dist/web/. public/
           cp upstream/LICENSE-MIT upstream/LICENSE-APACHE upstream/NOTICE public/
+          rm -f public/.trunk-lock
+          # Text recognition models, fetched by the app the first time OCR is used.
+          mkdir -p public/models
+          cp upstream/assets/models/text-detection.onnx upstream/assets/models/text-recognition.onnx public/models/
+          cp models-ATTRIBUTION.txt public/models/ATTRIBUTION.txt
           ls -la public
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
