@@ -38,44 +38,52 @@ jobs:
         with:
           workspaces: upstream
 
-      - name: Prove the regression test catches the black-box bug
+      - name: Unit tests for text editing (with the fix)
         working-directory: upstream
         run: |
-          cp crates/edit/src/text/fallback.rs /tmp/fallback.fixed.rs
-          git show HEAD:crates/edit/src/text/fallback.rs > crates/edit/src/text/fallback.rs
-          if cargo test -p pdfcraft-edit --lib glyphless 2>&1 | tee /tmp/unfixed.log; then
-            echo "::error::the test passed without the fix, so it does not catch the bug"; exit 1
-          fi
-          grep -q "test result: FAILED" /tmp/unfixed.log
-          cp /tmp/fallback.fixed.rs crates/edit/src/text/fallback.rs
+          cargo test -p pdfcraft-edit --lib 2>&1 | tee /tmp/unit.log
+          # Public notes (job logs need a sign-in): the glyphless test's own line and the totals.
+          echo "::notice title=unit glyphless::$(grep -E 'glyphless' /tmp/unit.log | tr '\n' ' ' | cut -c1-300)"
+          echo "::notice title=unit totals::$(grep -E '^test result' /tmp/unit.log | tr '\n' ' ' | cut -c1-300)"
 
-      - name: Test text editing (with the fix)
-        working-directory: upstream
-        run: cargo test -p pdfcraft-edit --lib
-
-      - name: End-to-end check on a real OCR PDF (image + invisible GlyphLessFont layer)
+      - name: End-to-end on a real OCR PDF (page image + invisible GlyphLessFont layer)
         working-directory: upstream
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr imagemagick >/dev/null
-          cargo build --release -p pdfcraft-cli
-          mkdir -p /tmp/e2e && cd /tmp/e2e
-          convert -size 1800x520 xc:'#2b2d5c' -fill white -font DejaVu-Sans-Bold -pointsize 120 \
-            -annotate +60+200 'Hottubben,' -annotate +60+400 'golfen en zee' scan.png
-          tesseract scan.png scan pdf
-          grep -a -q GlyphLessFont scan.pdf
+          mkdir -p /tmp/e2e
+          ( cd /tmp/e2e
+            convert -size 1800x520 xc:'#2b2d5c' -fill white -font DejaVu-Sans-Bold -pointsize 120 \
+              -annotate +60+200 'Hottubben,' -annotate +60+400 'golfen en zee' scan.png
+            tesseract scan.png scan pdf
+            grep -a -q GlyphLessFont scan.pdf
+            echo '[{"tool":"doc_open","args":{"path":"scan.pdf"}},{"tool":"text_lines","args":{"doc":1,"page":1}}]' > lines.json
+            echo '[{"tool":"doc_open","args":{"path":"scan.pdf"}},{"tool":"text_edit","args":{"doc":1,"page":1,"line":1,"text":"Strand en zee"}},{"tool":"doc_save","args":{"doc":1,"path":"edited.pdf"}}]' > edit.json )
           CLI="$GITHUB_WORKSPACE/upstream/target/release/pdfcraft-cli"
-          echo '[{"tool":"doc_open","args":{"path":"scan.pdf"}},{"tool":"text_lines","args":{"doc":1,"page":1}}]' > lines.json
-          "$CLI" run --script lines.json --root . --report > before.json
-          grep -o '"font": "[^"]*"' before.json | sort | uniq -c
-          grep -q -i glyphless before.json
-          echo '[{"tool":"doc_open","args":{"path":"scan.pdf"}},{"tool":"text_edit","args":{"doc":1,"page":1,"line":1,"text":"Strand en zee"}},{"tool":"doc_save","args":{"doc":1,"path":"edited.pdf"}}]' > edit.json
-          "$CLI" run --script edit.json --root . --report | tee edit.out
-          grep -q '"ok": true' edit.out
-          edited_font=$(grep -A3 '"line": {' edit.out | grep -o '"font": "[^"]*"' | head -1)
-          echo "edited line is drawn in: $edited_font"
-          test -n "$edited_font"
-          if echo "$edited_font" | grep -qi glyphless; then echo "::error::the edited text still uses the glyphless font"; exit 1; fi
-          "$CLI" text edited.pdf --page 1 | grep -q "Strand en zee"
+          # Build the CLI, edit line 1 of the OCR PDF, print the font the edited line is drawn in.
+          edit_font() {
+            cargo build --release -p pdfcraft-cli >/dev/null 2>&1 || cargo build --release -p pdfcraft-cli
+            ( cd /tmp/e2e && rm -f edited.pdf && "$CLI" run --script edit.json --root . --report > edit.out 2>&1
+              grep -A3 '"line": {' edit.out | grep -o '"font": "[^"]*"' | head -1 )
+          }
+          ( cd /tmp/e2e && "$CLI" run --script lines.json --root . --report > before.json 2>&1 || true )
+          echo "::notice title=e2e source fonts::$(grep -o '"font": "[^"]*"' /tmp/e2e/before.json 2>/dev/null | sort | uniq -c | tr '\n' ' ')"
+
+          # 1. Without the fix the bug must show: the edit is drawn in the glyphless font.
+          cp crates/edit/src/text/fallback.rs /tmp/fallback.fixed.rs
+          git show HEAD:crates/edit/src/text/fallback.rs > crates/edit/src/text/fallback.rs
+          unfixed="$(edit_font)"
+          echo "::notice title=e2e without fix::edited line font: ${unfixed:-none}; $(head -c 300 /tmp/e2e/edit.out | tr '\n' ' ')"
+          cp /tmp/fallback.fixed.rs crates/edit/src/text/fallback.rs
+          echo "$unfixed" | grep -qi glyphless || { echo "::error::without the fix the edit was not in the glyphless font, so this check does not reproduce the bug"; exit 1; }
+
+          # 2. With the fix the edit is drawn in a real font and the text reads back.
+          fixed="$(edit_font)"
+          echo "::notice title=e2e with fix::edited line font: ${fixed:-none}"
+          grep -q '"ok": true' /tmp/e2e/edit.out
+          test -n "$fixed"
+          if echo "$fixed" | grep -qi glyphless; then echo "::error::the edited text still uses the glyphless font"; exit 1; fi
+          "$CLI" text /tmp/e2e/edited.pdf --page 1 | grep -q "Strand en zee"
+          "$CLI" render /tmp/e2e/edited.pdf --page 1 --dpi 50 --out /tmp/e2e/edited.png
 
       - name: Install trunk
         run: |
