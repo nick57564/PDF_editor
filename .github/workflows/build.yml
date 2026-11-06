@@ -38,17 +38,25 @@ jobs:
         with:
           workspaces: upstream
 
-      - name: Unit tests for text editing (with the fix)
+      - name: Unit tests for text editing (fails without the fix, passes with it)
         working-directory: upstream
         run: |
+          set -o pipefail
+          cp crates/edit/src/text/fallback.rs /tmp/fallback.fixed.rs
+          git show HEAD:crates/edit/src/text/fallback.rs > crates/edit/src/text/fallback.rs
+          if cargo test -p pdfcraft-edit --lib glyphless 2>&1 | tee /tmp/unfixed.log; then
+            echo "::error::the glyphless test passed without the fix, so it does not catch the bug"; exit 1
+          fi
+          grep -q "test result: FAILED" /tmp/unfixed.log
+          echo "::notice title=unit without fix::$(grep -E 'panicked|drawn in' /tmp/unfixed.log | tr '\n' ' ' | cut -c1-300)"
+          cp /tmp/fallback.fixed.rs crates/edit/src/text/fallback.rs
           cargo test -p pdfcraft-edit --lib 2>&1 | tee /tmp/unit.log
-          # Public notes (job logs need a sign-in): the glyphless test's own line and the totals.
-          echo "::notice title=unit glyphless::$(grep -E 'glyphless' /tmp/unit.log | tr '\n' ' ' | cut -c1-300)"
-          echo "::notice title=unit totals::$(grep -E '^test result' /tmp/unit.log | tr '\n' ' ' | cut -c1-300)"
+          echo "::notice title=unit with fix::$(grep -E '^test result' /tmp/unit.log | tr '\n' ' ' | cut -c1-300)"
 
       - name: End-to-end on a real OCR PDF (page image + invisible GlyphLessFont layer)
         working-directory: upstream
         run: |
+          set -o pipefail
           sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr imagemagick >/dev/null
           mkdir -p /tmp/e2e
           ( cd /tmp/e2e

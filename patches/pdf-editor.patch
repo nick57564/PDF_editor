@@ -42,10 +42,10 @@ index 46b3a25..0235141 100644
    </body>
  </html>
 diff --git a/crates/edit/src/tests.rs b/crates/edit/src/tests.rs
-index cbea5c2..07b5132 100644
+index cbea5c2..b885313 100644
 --- a/crates/edit/src/tests.rs
 +++ b/crates/edit/src/tests.rs
-@@ -10588,3 +10588,44 @@ fn review_inside_scope_group_move_matches_direct_transform_under_outer_scale() {
+@@ -10588,3 +10588,36 @@ fn review_inside_scope_group_move_matches_direct_transform_under_outer_scale() {
          }
      }
  }
@@ -75,19 +75,11 @@ index cbea5c2..07b5132 100644
 +        assert!(text::text_blocks(&doc, 0).unwrap()[0].invisible);
 +        text::rewrite_block(&mut doc, 0, 0, Some("golfen en strand"), &text::BlockStyle::default()).unwrap();
 +        let doc = reopen(&doc);
-+        let ops = pdfcraft_content::parse(&page_content_bytes(&doc, 0)).ops;
-+        let fonts = page_fonts(&doc, &pdfcraft_model::pages(&doc)[0]);
-+        let shown: Vec<String> = ops
-+            .iter()
-+            .filter(|o| o.is("Tf"))
-+            .filter_map(|o| match o.operands.first() {
-+                Some(Object::Name(n)) => fonts.get(n).map(|f| doc.resolve(f)).and_then(|f| f.as_dict().and_then(|d| d.name(b"BaseFont")).map(<[u8]>::to_vec)),
-+                _ => None,
-+            })
-+            .map(|b| String::from_utf8_lossy(&b).into_owned())
-+            .collect();
-+        assert!(!shown.is_empty(), "{base}: the rewrite sets a font");
-+        assert!(shown.iter().all(|b| !b.to_ascii_lowercase().contains("glyphless")), "{base}: drawn in a real font, not {shown:?}");
++        // The edited paragraph, read back: the old invisible run may stay in the page's resources,
++        // but the new text must be shown in a real font.
++        let blocks = text::text_blocks(&doc, 0).unwrap();
++        let edited = blocks.iter().find(|b| b.text.contains("strand")).unwrap_or_else(|| panic!("{base}: the new text reads back"));
++        assert!(!edited.base_font.to_ascii_lowercase().contains("glyphless"), "{base}: drawn in a real font, not {}", edited.base_font);
 +    }
 +}
 diff --git a/crates/edit/src/text/fallback.rs b/crates/edit/src/text/fallback.rs
